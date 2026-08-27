@@ -44,6 +44,8 @@ SELECT DISTINCT
     fe.disease_group,
     fe.practice_group,
     fe.rcr_category,
+    st.description AS specialist_treatment_description,
+    tm.description AS treatment_modality_description,
 
     -- Prescription
     fp.prescription_sk,
@@ -85,4 +87,11 @@ LEFT JOIN reference.rtds_treatment_intent ti
 
 LEFT JOIN rtds.int_episode_treatment_start its
     ON fe.radiotherapy_episode_identifier =
-       its.radiotherapy_episode_identifier;
+       its.radiotherapy_episode_identifier
+
+LEFT JOIN reference.rtds_specialist_treatment st
+    ON fp.specialist_treatment = st.code
+
+LEFT JOIN reference.rtds_treatment_modality tm
+    ON fp.treatment_modality = tm.code
+;

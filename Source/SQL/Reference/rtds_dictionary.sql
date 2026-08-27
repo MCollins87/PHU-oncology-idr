@@ -60,10 +60,10 @@ VALUES
 (
     'SPECIALIST_RADIOTHERAPY_TREATMENTS',
     'rtds_raw.prescription',
-    NULL,
+    'reference.rtds_specialist_treatment',
     'Specialist treatment type',
-    FALSE
-),
+    TRUE
+)
 
 (
     'ANATOMICAL_TREATMENT_SITE_RADIOTHERAPY',
@@ -90,12 +90,13 @@ VALUES
 ),
 
 (
-    'ROYAL_COLLEGE_OF_RADIOLOGISTS_RCR_CATEGORY',
+    'RADIOTHERAPY_TREATMENT_MODALITY',
     'rtds_raw.prescription',
-    NULL,
-    'RCR category',
-    FALSE
-),
+    'reference.rtds_treatment_modality',
+    'Treatment modality',
+    TRUE
+)
+`
 
 (
     'RADIOTHERAPY_PRESCRIPTION_PRIORITY',

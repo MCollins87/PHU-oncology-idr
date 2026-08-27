@@ -47,3 +47,25 @@ category group.
 - 9 Not Specified
 - X Not Known
 
+## Specialist Treatments
+
+Codes
+
+- S01 - Simple
+- S02 - Conformal
+- S03 - IMRT
+- S04 - RapidArc / VMAT
+- S05 - IORT
+- S06 - TBI or TBE
+- S07 - SABR
+- S08 - SRS / SRT
+- S09 - Proactive Adaptive RT
+- S10 - Real-Time Adaptive RT
+- S11 - Contact Radiotherapy
+- S98 - Other Treatment
+
+## Treatment Modalities
+
+- 1 - External Beam Radiotherapy
+- 2 - Brachytherapy
+- 3 - Proton Therapy
