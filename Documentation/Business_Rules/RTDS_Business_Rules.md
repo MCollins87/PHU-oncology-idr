@@ -11,6 +11,20 @@
 - Southampton: SO* excluding SO31
 - Other / Outside Area: Everything else
 
+## Practice Groups
+- Breast
+- Lung
+- Head and Neck
+- Upper GI
+- Lower GI
+- Urology
+- Gynae
+- Brain/CNS
+- Lymphoma
+- Skin
+- Melanoma
+- Other
+
 ## Treatment Intent
 
 - 01 Adjuvant
@@ -72,6 +86,10 @@ Codes
 
 ## Special Diagnosis Mappings
 
+- C61 = Prostate = Urology
+- C67 = Bladder = Urology
+- L91.0 = Keloid = Other = Bnign Conditions
+
 ### Keloid Scar
 
 ICD10:
@@ -94,3 +112,11 @@ included within operational and activity reporting.
 Whilst L91.0 is not a malignant diagnosis, management and service
 planning discussions frequently include keloid activity and therefore
 these episodes are retained and classified.
+
+## Treatment Start Definition
+
+First treatment date
+
+`MIN(time_and_date_of_exposure)`
+
+Grouped by `radiotherapy_episode_identifier`
