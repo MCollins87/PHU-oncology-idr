@@ -2,6 +2,7 @@ import os
 import psycopg2
 import logging
 from dotenv import load_dotenv
+from pathlib import Path
 
 logging.basicConfig(
     filename=r"C:\IDR\logs\etl.log",
@@ -10,6 +11,9 @@ logging.basicConfig(
 )
 
 load_dotenv()
+
+BASE_DIR = Path(__file__).resolve().parents[3]
+SQL_DIR = BASE_DIR / "SQL"
 
 DB_CONFIG = {
     "host": os.getenv("PGHOST"),
@@ -23,15 +27,16 @@ def run_sql(file):
     logging.info(f"Executing {file}")
     conn = psycopg2.connect(**DB_CONFIG)
     cursor = conn.cursor()
-    with open(file, 'r') as f:
+    with open(file, "r", encoding="utf-8") as f:
         cursor.execute(f.read())
     conn.commit()
     cursor.close()
     conn.close()
 
 if __name__ == "__main__":
-    run_sql("../SQL/dim_patient.sql")
-    run_sql("../SQL/fact_episode.sql")
-    run_sql("../SQL/fact_prescription.sql")
-    run_sql("../SQL/fact_attendance.sql")
+    run_sql(SQL_DIR / "RTDS" / "Intermediate" / "int_episode_treatment_start.sql")
+    run_sql(SQL_DIR / "RTDS" / "Dimensions" / "dim_patient.sql")
+    run_sql(SQL_DIR / "RTDS" / "Facts" / "fact_episode.sql")
+    run_sql(SQL_DIR / "RTDS" / "Facts" / "fact_prescription.sql")
+    run_sql(SQL_DIR / "RTDS" / "Facts" / "fact_attendance.sql")
     logging.info("RTDS fact refresh complete")

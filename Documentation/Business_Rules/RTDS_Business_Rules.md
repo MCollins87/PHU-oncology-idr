@@ -69,3 +69,28 @@ Codes
 - 1 - External Beam Radiotherapy
 - 2 - Brachytherapy
 - 3 - Proton Therapy
+
+## Special Diagnosis Mappings
+
+### Keloid Scar
+
+ICD10:
+L91.0
+
+Tumour Site:
+Keloid
+
+Disease Group:
+Benign Conditions
+
+Practice Group:
+Other
+
+Rationale:
+
+Keloid scar radiotherapy is delivered within the service and is
+included within operational and activity reporting.
+
+Whilst L91.0 is not a malignant diagnosis, management and service
+planning discussions frequently include keloid activity and therefore
+these episodes are retained and classified.

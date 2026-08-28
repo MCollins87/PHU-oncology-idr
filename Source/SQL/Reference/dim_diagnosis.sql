@@ -67,6 +67,7 @@ VALUES
     'Breast',
     'Breast'
 ),
+('D05','D05','Breast In Situ','Breast','Breast'),
 
 -- Head & Neck
 (
@@ -92,7 +93,7 @@ VALUES
     'Head and Neck',
     'Head and Neck'
 ),
-
+('C37','C37','Thymus','Head and Neck','Head and Neck'),
 -- Lung
 (
     'C33',
@@ -101,6 +102,7 @@ VALUES
     'Lung',
     'Lung'
 ),
+('C45','C45','Mesothelioma','Lung','Lung'),
 
 -- Upper GI
 (
@@ -118,6 +120,7 @@ VALUES
     'Upper GI',
     'Upper GI'
 ),
+('C17','C17','Small Intestine','Upper GI','Upper GI'),
 
 -- Lower GI
 (
@@ -129,21 +132,16 @@ VALUES
 ),
 
 -- Urology
-(
-    'C60',
-    'C68',
-    'Urology',
-    'Urology',
-    'Urology'
-),
+('C60','C60','Penis','Urology','Urology'),
+('C61','C61','Prostate','Prostate','Urology'),
+('C62','C62','Testis','Urology','Urology'),
+('C63','C63','Other Male Genital','Urology','Urology'),
 
-(
-    'C61',
-    'C61',
-    'Prostate',
-    'Prostate',
-    'Urology'
-),
+('C64','C64','Kidney','Urology','Urology'),
+('C65','C65','Renal Pelvis','Urology','Urology'),
+('C66','C66','Ureter','Urology','Urology'),
+('C67','C67','Bladder','Urology','Urology'),
+('C68','C68','Other Urinary Tract','Urology','Urology')
 
 -- Gynae
 (
@@ -172,7 +170,7 @@ VALUES
     'Lymphoma',
     'Lymphoma'
 ),
-
+('C90','C90','Myeloma','Myeloma','Lymphoma'),
 -- Skin
 (
     'C44',
@@ -181,6 +179,7 @@ VALUES
     'Skin',
     'Skin'
 ),
+('L91', 'L91', 'Keloid','Skin','Skin'),
 
 -- Melanoma
 (
@@ -215,7 +214,9 @@ VALUES
     'Cancer of Unknown Primary',
     'CUP',
     'Other'
-)
+),
+('C74','C74','Adrenal Gland','Other','Other'),
+('C69','C69','Eye','Other','Other')
 
 ON CONFLICT
 (
