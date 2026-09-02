@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS reference.dim_diagnosis
     )
 );
 
+TRUNCATE TABLE reference.dim_diagnosis;
+
 INSERT INTO reference.dim_diagnosis
 (
     icd10_start,
@@ -51,172 +53,115 @@ INSERT INTO reference.dim_diagnosis
 VALUES
 
 -- Anal
-(
-    'C21',
-    'C21',
-    'Anal',
-    'Anal',
-    'Lower GI'
-),
+('C21','C21','Anal','Anal','Lower GI'),
 
--- Breast
-(
-    'C50',
-    'C50',
-    'Breast',
-    'Breast',
-    'Breast'
-),
-('D05','D05','Breast In Situ','Breast','Breast'),
-
--- Head & Neck
-(
-    'C00',
-    'C14',
-    'Head and Neck',
-    'Head and Neck',
-    'Head and Neck'
-),
-
-(
-    'C30',
-    'C32',
-    'Head and Neck',
-    'Head and Neck',
-    'Head and Neck'
-),
-
-(
-    'C73',
-    'C73',
-    'Thyroid',
-    'Head and Neck',
-    'Head and Neck'
-),
-('C37','C37','Thymus','Head and Neck','Head and Neck'),
--- Lung
-(
-    'C33',
-    'C34',
-    'Lung',
-    'Lung',
-    'Lung'
-),
-('C45','C45','Mesothelioma','Lung','Lung'),
-
--- Upper GI
-(
-    'C15',
-    'C16',
-    'Oesophago-Gastric',
-    'Upper GI',
-    'Upper GI'
-),
-
-(
-    'C22',
-    'C25',
-    'Hepatobiliary/Pancreatic',
-    'Upper GI',
-    'Upper GI'
-),
-('C17','C17','Small Intestine','Upper GI','Upper GI'),
-
--- Lower GI
-(
-    'C18',
-    'C20',
-    'Colorectal',
-    'Lower GI',
-    'Lower GI'
-),
-
--- Urology
-('C60','C60','Penis','Urology','Urology'),
-('C61','C61','Prostate','Prostate','Urology'),
-('C62','C62','Testis','Urology','Urology'),
-('C63','C63','Other Male Genital','Urology','Urology'),
-
-('C64','C64','Kidney','Urology','Urology'),
-('C65','C65','Renal Pelvis','Urology','Urology'),
-('C66','C66','Ureter','Urology','Urology'),
+-- Bladder
 ('C67','C67','Bladder','Urology','Urology'),
-('C68','C68','Other Urinary Tract','Urology','Urology')
 
--- Gynae
-(
-    'C51',
-    'C58',
-    'Gynaecological',
-    'Gynaecological',
-    'Gynae'
-),
+-- Bone Sarcoma
+('C40','C41','Bone Sarcoma','Sarcoma','Other'),
 
 -- Brain/CNS
+('C70','C72','Brain/CNS','Brain/CNS','Brain/CNS'),
 
-(
-    'C70',
-    'C72',
-    'Brain/CNS',
-    'Brain/CNS',
-    'Brain/CNS'
-),
+-- Breast
+('C50','C50','Breast','Breast','Breast'),
+
+-- Cancer of Unknown Primary
+('C77','C80','Cancer of Unknown Primary','CUP','Other'),
+
+-- Colorectal
+('C18','C20','Colorectal','Lower GI','Lower GI'),
+
+-- Endocrine
+('C74','C75','Endocrine','Endocrine','Other'),
+
+-- Eye
+('C69','C69','Eye','Eye','Other'),
+
+-- Gynaecological
+('C51','C58','Gynaecological','Gynaecological','Gynae'),
+
+-- Head & Neck
+('C00','C14','Head and Neck','Head and Neck','Head and Neck'),
+('C30','C32','Head and Neck','Head and Neck','Head and Neck'),
+
+-- Hepatobiliary/Pancreatic
+('C22','C25','Hepatobiliary/Pancreatic','Upper GI','Upper GI'),
+
+-- Kidney
+('C64','C64','Kidney','Urology','Urology'),
+
+-- Leukaemia
+('C91','C95','Leukaemia','Leukaemia','Haematology'),
+
+-- Lung
+('C33','C34','Lung','Lung','Lung'),
 
 -- Lymphoma
-(
-    'C81',
-    'C86',
-    'Lymphoma',
-    'Lymphoma',
-    'Lymphoma'
-),
-('C90','C90','Myeloma','Myeloma','Lymphoma'),
--- Skin
-(
-    'C44',
-    'C44',
-    'Non-Melanoma Skin Cancer',
-    'Skin',
-    'Skin'
-),
-('L91', 'L91', 'Keloid','Skin','Skin'),
+('C81','C86','Lymphoma','Lymphoma','Lymphoma'),
 
 -- Melanoma
-(
-    'C43',
-    'C43',
-    'Melanoma',
-    'Melanoma',
-    'Melanoma'
-),
+('C43','C43','Melanoma','Melanoma','Melanoma'),
 
--- Sarcoma
-(
-    'C40',
-    'C41',
-    'Bone Sarcoma',
-    'Sarcoma',
-    'Other'
-),
+-- Mesothelioma
+('C45','C45','Mesothelioma','Mesothelioma','Lung'),
 
-(
-    'C47',
-    'C49',
-    'Soft Tissue Sarcoma',
-    'Sarcoma',
-    'Other'
-),
+-- Myeloma
+('C88','C90','Myeloma','Myeloma','Haematology'),
 
--- CUP
-(
-    'C77',
-    'C80',
-    'Cancer of Unknown Primary',
-    'CUP',
-    'Other'
-),
-('C74','C74','Adrenal Gland','Other','Other'),
-('C69','C69','Eye','Other','Other')
+-- Non-Malignant
+('D00','D45','Non-Malignant','Non-Malignant','Other'),
+('D46','D47','Myelodysplasia / Myeloproliferative','Haematology','Haematology'),
+('D48','D99','Non-Malignant','Non-Malignant','Other'),
+
+-- Non-Melanoma Skin Cancer
+('C44','C44','Non-Melanoma Skin Cancer','Skin','Skin'),
+
+-- Oesophago-Gastric
+('C15','C16','Oesophago-Gastric','Upper GI','Upper GI'),
+
+-- Other Male Genital
+('C63','C63','Other Male Genital','Urology','Urology'),
+
+-- Other Urinary Tract
+('C68','C68','Other Urinary Tract','Urology','Urology'),
+
+-- Penis
+('C60','C60','Penis','Urology','Urology'),
+
+-- Prostate
+('C61','C61','Prostate','Prostate','Urology'),
+
+-- Renal Pelvis
+('C65','C65','Renal Pelvis','Urology','Urology'),
+
+-- Small Bowel
+('C17','C17','Small Bowel','Upper GI','Upper GI'),
+
+-- Soft Tissue Sarcoma
+('C47','C49','Soft Tissue Sarcoma','Sarcoma','Other'),
+
+-- Testis
+('C62','C62','Testis','Urology','Urology'),
+
+-- Thoracic
+('C37','C38','Thoracic','Thoracic','Lung'),
+
+-- Thyroid
+('C73','C73','Thyroid','Head and Neck','Head and Neck'),
+
+-- Ureter
+('C66','C66','Ureter','Urology','Urology'),
+
+-- Ill-defined digestive organs
+('C26','C26','Upper GI Other','Upper GI','Upper GI'),
+
+-- Other and ill-defined primary site
+('C76','C76','Cancer of Unknown Primary','CUP','Other'),
+
+-- Amyloidosis
+('E85','E85','Non-Malignant','Non-Malignant','Other')
 
 ON CONFLICT
 (
