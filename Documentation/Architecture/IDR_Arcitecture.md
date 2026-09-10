@@ -2,84 +2,233 @@
 
 ## Purpose
 
-The Oncology IDR provides a central reporting repository for:
+The Oncology Information Data Repository (Oncology IDR) provides a central reporting and analytics platform for Portsmouth Oncology Centre.
 
-- Oncology referral management
-- Radiotherapy pathway monitoring
-- Capacity and demand reporting
-- RTDS Treatment analytics
+The repository supports two distinct but complementary functions:
+
+1. Operational Pathway Intelligence (OPS)
+2. Treatment Activity Intelligence (ACT)
+
+These datasets have different purposes, refresh frequencies, and reporting use-cases and should not be considered interchangeable.
+
+---
+
+## Architectural Principles
+
+### Operational Pathway Intelligence (OPS)
+
+Purpose:
+
+Predictive and operational management of patients currently progressing through oncology pathways.
+
+Questions supported:
+
+- Which patients are waiting for treatment?
+- Where are delays occurring?
+- Which pathways are at risk of breaching targets?
+- What future treatment demand is expected?
+- What impact will capacity changes have?
+
+Characteristics:
+
+- Daily refresh
+- Near real-time
+- Prospective
+- Actionable
+- Supports intervention
+
+Primary schemas:
+
+- staging
+- warehouse
+
+Primary source systems:
+
+- Oncology Intake Database
+- ARIA
+- Capacity and operational exports
+
+---
+
+### Treatment Activity Intelligence (ACT)
+
+Purpose:
+
+Analysis of treatment activity that has already occurred.
+
+Questions supported:
+
+- How many patients received treatment?
+- Which disease groups were treated?
+- What treatment intent was delivered?
+- What activity was delivered by tumour site?
+- What was historic service utilisation?
+
+Characteristics:
+
+- Monthly refresh
+- Historical
+- Retrospective
+- Reporting and audit focused
+
+Primary schemas:
+
+- rtds_raw
+- rtds
+- sact_raw
+- sact
+
+Primary source systems:
+
+- RTDS
+- SACT
+
+---
+
+## High Level Architecture
+
+```mermaid
+flowchart TD
+
+A[Source Systems]
+
+A --> OPS[Operational Pathway Intelligence]
+A --> ACT[Treatment Activity Intelligence]
+
+OPS --> STG[staging]
+STG --> WH[warehouse]
+
+ACT --> RTDS[rtds]
+ACT --> SACT[sact]
+
+WH --> MART[mart]
+RTDS --> MART
+SACT --> MART
+
+MART --> PBI[Power BI / Reporting]
+```
+
+---
 
 ## Data Sources
 
+### Operational Pathway Intelligence
+
 - Oncology Intake Database
-- Aria
-- RTDS
+- ARIA Referrals
+- ARIA Bookings
+- ARIA CT
+- ARIA Treatment
+- Machine Capacity Data
 
-## General Architecture
-``` mermaid
-flowchart TD
-A[Source Systems] --> B[Staging]
-B --> C[Warehouse]
-C --> D[Reference Dimensions]
-D --> E[Reporting Marts]
-E --> F[Power BI]
-```
+### Treatment Activity Intelligence
 
-## RTDS Architecture
-``` mermaid
-flowchart TD
-A[rtds_raw.attendance] --> C[rtds.dim_patient]
-B[rtds_raw.prescription] --> C
-C --> D[rtds.fact_episode]
-D --> E[rtds.fact_prescription]
-E --> F[rtds.fact_attendance]
-```
+- RTDS Attendance Extract
+- RTDS Prescription Extract
+- SACT Administration Dataset
+
+---
 
 ## Schemas
 
+### Control Layer
+
 - control
+
+Supports ETL auditing, monitoring and load history.
+
+### Operational Intelligence Layer
+
 - staging
 - warehouse
+
+Supports referral management, pathway monitoring, demand prediction and operational reporting.
+
+### Treatment Activity Layer
+
 - rtds_raw
 - rtds
+- sact_raw
+- sact
+
+Supports historic treatment activity reporting and analysis.
+
+### Shared Reporting Layer
+
 - reference
 - mart
 
-## Key Relationships
+Provides reference mappings and user-facing reporting views.
 
-- fact_episode.patient_sk -> dim_patient.patient_sk
-- fact_prescription.episode_sk -> fact_episode.episode_sk
-- fact_attendance.patient_sk -> dim_patient.patient_sk
+---
 
-## Key Columns
+## Refresh Schedules
 
-- dim_patient
+### Operational Pathway Intelligence
 
-- nhs_number
-- postcode
-- family_name
-- given_name
+Frequency:
 
-- fact_episode
+Daily
 
-- diagnosis_icd
-- tumour_site
-- disease_group
-- practice_group
-- dtt_date
+Pipeline:
 
-- fact_prescription
+run_operational_pipeline.py
 
-- treatment_site
-- specialist_treatment
-- treatment_modality
-- prescribed_dose
-- prescribed_fractions
+Outputs:
 
-- vw_episode_summary
+- Oncology pathways
+- Radiotherapy pathways
+- Machine capacity
+- Demand forecasting
 
-- patient
-- geography
-- diagnosis
-- treatment
-- start date
+### Treatment Activity Intelligence
+
+Frequency:
+
+Monthly
+
+Pipeline:
+
+run_activity_pipeline.py
+
+Outputs:
+
+- RTDS activity
+- SACT activity
+- Patient starts
+- Geography reporting
+- Service activity analysis
+
+---
+
+## Reporting Guidance
+
+### Use Operational Intelligence when:
+
+- Managing waiting lists
+- Monitoring targets
+- Predicting future demand
+- Assessing service pressures
+- Evaluating capacity changes
+
+### Use Treatment Activity Intelligence when:
+
+- Reporting completed treatments
+- Producing annual activity reports
+- Benchmarking services
+- Analysing tumour-site activity
+- Reviewing historic trends
+
+---
+
+## Key Design Principle
+
+Operational Intelligence answers:
+
+"What is happening and what is likely to happen?"
+
+Treatment Activity Intelligence answers:
+
+"What actually happened?"
+
+The two data domains should be analysed together only when the business question explicitly requires linkage between pathway performance and delivered treatment activity.

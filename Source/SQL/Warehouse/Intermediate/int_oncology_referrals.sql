@@ -10,7 +10,7 @@ CREATE VIEW warehouse.int_oncology_referrals AS
     MAX(speciality_referred) AS speciality_referred,
     MAX(oncologist) AS oncologist,
     MAX(referral_source) AS referral_source,
-    MIN(date_referred) AS date_referred,
+    MIN(COALESCE(date_referred, date_received)) AS date_referred,
     MIN(date_received) AS date_received,
     MAX(date_triaged) AS date_triaged,
     MAX(clinic_date) AS clinic_date,

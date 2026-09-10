@@ -25,7 +25,7 @@ WITH base AS (
         DATE_TRUNC('week', s.date_referred)::DATE AS referral_week,
 
         -- Core intervals
-        (COALESCE(s.date_received::DATE, s.date_referred) - s.date_referred::DATE) AS days_referral_to_received,
+        s.date_received::DATE- s.date_referred::DATE AS days_referral_to_received,
         GREATEST(clinic.first_booking_date::DATE - COALESCE(s.date_received::DATE, s.date_referred::DATE), 0) AS days_received_to_triage,
         (clinic.first_clinic_date::DATE - clinic.first_booking_date::DATE) AS days_triage_to_clinic,
 

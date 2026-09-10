@@ -1,20 +1,73 @@
 # PHU Oncology IDR
 
-Integrated oncology reporting repository.
+## Purpose
 
-## Components
+The Oncology IDR provides a central reporting and analytics platform
+for Portsmouth Oncology Centre.
 
-Warehouse
-RTDS Warehouse
-Reference Dimensions
-Reporting Marts
+The repository supports:
 
-## Documentation
+- Operational Pathway Intelligence (OPS)
+- Treatment Activity Intelligence (ACT)
 
-Documentation\Architecture
+## Operational Pathway Intelligence (OPS)
 
-## Setup
+Purpose:
 
-See:
+What is happening now?
 
-Documentation\SOP\Database_Rebuild.md
+Supports:
+
+- Referral management
+- Pathway monitoring
+- Capacity planning
+- Demand forecasting
+
+Refresh:
+
+Daily
+
+Pipeline:
+
+run_ops_pipeline.py
+
+## Treatment Activity Intelligence (ACT)
+
+Purpose:
+
+What actually happened?
+
+Supports:
+
+- RTDS reporting
+- SACT reporting
+- Patient starts
+- Historic activity analysis
+
+Refresh:
+
+Monthly
+
+Pipeline:
+
+run_activity_pipeline.py (planned)
+
+## Repository Structure
+
+Documentation/
+DataRequests/
+Source/
+
+## Key Documentation
+
+Architecture
+ETL
+SOP
+Data Dictionary
+
+## Technologies
+
+- PostgreSQL
+- Python
+- GitHub
+- Power BI
