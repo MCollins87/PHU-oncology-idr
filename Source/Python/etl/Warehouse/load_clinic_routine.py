@@ -103,8 +103,25 @@ def load_data():
     if path is None:
         return None, None
     logging.info(f"Using workbook {path}")
-    bookings = pd.read_excel(path, sheet_name="New Bookings")
-    appointments = pd.read_excel(path, sheet_name="Appointments")
+
+    excel_file = pd.ExcelFile(path)
+    # Find booking sheet
+    booking_sheet = next((sheet for sheet in excel_file.sheet_names if "booking" in sheet.lower()), None)
+    # Find appointment sheet
+    appointment_sheet = next((sheet for sheet in excel_file.sheet_names if "appointment" in sheet.lower()), None)
+
+    if booking_sheet is None:
+        raise ValueError(f"No booking sheet found. Available sheets: {excel_file.sheet_names}")
+
+    if appointment_sheet is None:
+        raise ValueError(f"No appointment sheet found. Available sheets: {excel_file.sheet_names}")
+
+    logging.info(f"Using booking sheet: {booking_sheet}, appointment sheet: {appointment_sheet}")
+
+    bookings = pd.read_excel(path, sheet_name=booking_sheet)
+    appointments = pd.read_excel(path, sheet_name=appointment_sheet)
+
+    excel_file.close()
 
     bookings["record_source"] = "Booking"
     appointments["record_source"] = "Appointment"

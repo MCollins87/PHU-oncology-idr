@@ -65,7 +65,9 @@ def clean_columns(df):
         "clin_/_med": "clinic_type",
         "new_clinic_date": "clinic_date",
         "date_recieved": "date_received",  # fix spelling
-        "tumour_site": "speciality_referred"
+        "tumour_site": "speciality_referred",
+        "referral_date": "date_referred",
+        "triage_date": "date_triaged"
     })
 
     return df
@@ -123,6 +125,16 @@ def load_data():
 
     df = pd.read_csv(file_path, encoding="utf-8-sig")
     df = clean_columns(df)
+
+    required_col = [
+        "date_received",
+        "date_triaged",
+        "date_referred"
+    ]
+    for col in required_col:
+        if col not in df.columns:
+            raise ValueError(f"Required column '{col}' is missing from the data.")
+        
     df = ensure_columns(df)
     df = convert_dates(df)
 
