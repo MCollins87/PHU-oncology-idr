@@ -11,6 +11,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+SKIP_RTDS_LOADS = True
 
 BASE_DIR = Path(__file__).resolve().parent
 PYTHON_DIR = BASE_DIR
@@ -111,10 +112,19 @@ def refresh_sact():
 # Refresh Mart
 def refresh_marts():
 
+    logging.info("Dropping mart views")
+    run_sql_inline("""
+    DROP VIEW IF EXISTS mart.vw_episode_summary CASCADE;
+    DROP VIEW IF EXISTS mart.vw_patient_geography CASCADE;
+    DROP VIEW IF EXISTS mart.vw_rt_patient_starts CASCADE;
+    DROP VIEW IF EXISTS mart.vw_sact_patient_starts CASCADE;
+    DROP VIEW IF EXISTS mart.vw_oncology_patient_starts CASCADE;
+    """)
+
     logging.info("Refreshing mart views")
 
-    run_sql(SQL_DIR / "Mart" / "vw_episode_summary.sql")
     run_sql(SQL_DIR / "Mart" / "vw_patient_geography.sql")
+    run_sql(SQL_DIR / "Mart" / "vw_episode_summary.sql")
     run_sql(SQL_DIR / "Mart" / "vw_rt_patient_starts.sql")
     run_sql(SQL_DIR / "Mart" / "vw_sact_patient_starts.sql")
     run_sql(SQL_DIR / "Mart" / "vw_oncology_patient_starts.sql")
@@ -164,11 +174,20 @@ def qc_summary():
 
 if __name__ == "__main__":
     logging.info("ACT Pipeline started")
-    if validate_files():
-        refresh_rtds()
-        refresh_sact()
-        refresh_marts()
-        qc_summary()
-        logging.info("ACT Pipeline completed successfully")
+
+    if SKIP_RTDS_LOADS:
+        logging.info(
+            "Skipping RTDS loads - data already loaded"
+        )
+        run_python(
+            "etl/RTDS/refresh_rtds_facts.py"
+        )
     else:
-        logging.info("Act Pipeline Skipped.")
+        refresh_rtds()
+    refresh_sact()
+    refresh_marts()
+    qc_summary()
+
+    logging.info("ACT Pipeline completed successfully")
+
+
