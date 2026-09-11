@@ -1,5 +1,7 @@
 # ACT Pipeline Design
 
+Review SACT fact grain as part of ACT implementation.
+
 ## Purpose
 
 Provide a controlled refresh process for monthly treatment activity datasets.
@@ -44,6 +46,26 @@ RTDS UK - CSV2 Prescription.csv
 
 `SACT_v3_MMMYY.csv`
 
+---
+
+## File Management Strategy
+
+Validated source files will be copied to local ACT inbox folders. 
+
+**RTDS**
+
+`C:\IDR\RAW\RTDS`
+
+**SACT**
+
+`C:\IDR\RAW\SACT`
+
+Fllowing successful processing, files will be archived to:
+```
+C:\IDR\Archive\RTDS
+C:\IDR\Archive\SACT
+```
+The ACT pipeline will execute only when source files are present. 
 ---
 
 ## Pipeline Phases

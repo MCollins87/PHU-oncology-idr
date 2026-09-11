@@ -46,17 +46,17 @@ DATA_PATH = os.getenv(
 # HELPER FUNCTIONS
 # ----------------------------------------
 
-def get_latest_file(folder, prefix):
+def get_latest_file(folder, match_text):
 
     files = [
         f for f in os.listdir(folder)
-        if f.startswith(prefix)
+        if match_text.lower() in f.lower()
         and f.lower().endswith(".csv")
     ]
 
     if not files:
         raise FileNotFoundError(
-            f"No files found with prefix '{prefix}'"
+            f"No files found with text '{match_text}'"
         )
 
     latest_file = max(
@@ -204,7 +204,7 @@ def load_data():
 
     file_path = get_latest_file(
         DATA_PATH,
-        "RTDSUK_CSV1"
+        "CSV1"
     )
 
     logging.info(

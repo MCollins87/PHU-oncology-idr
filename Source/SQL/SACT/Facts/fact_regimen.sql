@@ -1,3 +1,5 @@
+TRUNCATE TABLE sact.fact_regimen;
+
 INSERT INTO sact.fact_regimen
 (
     patient_sk,
