@@ -4,6 +4,8 @@ import psycopg2
 from dotenv import load_dotenv
 from pathlib import Path
 import logging
+import shutil
+from datetime import datetime
 
 logging.basicConfig(
     filename=r"C:\IDR\logs\etl.log",
@@ -11,7 +13,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-SKIP_RTDS_LOADS = True
+SKIP_RTDS_LOADS = False
 
 BASE_DIR = Path(__file__).resolve().parent
 PYTHON_DIR = BASE_DIR
@@ -30,6 +32,9 @@ DB_CONFIG = {
 
 RTDS_DIR = Path(r"C:\IDR\RAW\RTDS")
 SACT_DIR = Path(r"C:\IDR\RAW\SACT")
+
+RTDS_ARCHIVE_DIR = Path(r"C:\IDR\Archive\RTDS")
+SACT_ARCHIVE_DIR = Path(r"C:\IDR\Archive\SACT")
 
 def run_python(script):
     script_path = BASE_DIR / script
@@ -172,6 +177,31 @@ def qc_summary():
 
     logging.info("----- END QC SUMMARY -----")
 
+def archive_files():
+
+    today = datetime.now().strftime("%Y-%m")
+
+    rtds_archive = RTDS_ARCHIVE_DIR / today
+    sact_archive = SACT_ARCHIVE_DIR / today
+
+    rtds_archive.mkdir(parents=True, exist_ok=True)
+    sact_archive.mkdir(parents=True, exist_ok=True)
+
+    for file in RTDS_DIR.glob("*.csv"):
+        destination = rtds_archive / file.name
+        logging.info(
+            f"Archiving RTDS file: {file.name}"
+        )
+        shutil.move(str(file), str(destination))
+    for file in SACT_DIR.glob("*.csv"):
+        destination = sact_archive / file.name
+        logging.info(
+            f"Archiving SACT file: {file.name}"
+        )
+        shutil.move(str(file), str(destination))
+    logging.info("File archive complete")
+
+
 if __name__ == "__main__":
     logging.info("ACT Pipeline started")
 
@@ -187,6 +217,7 @@ if __name__ == "__main__":
     refresh_sact()
     refresh_marts()
     qc_summary()
+    archive_files()
 
     logging.info("ACT Pipeline completed successfully")
 
