@@ -277,3 +277,136 @@ Unlss a specific requirement exists, users should:
 2. Use patient-start views for activity reporting.
 3. Use fact tables only for detailed pathway analysis.
 4. Use the integrated oncology view for cross-modality reporting.
+
+## Architecture
+
+The Oncology IDR is split into two domains.
+
+### OPS (Operational Pathway Intelligence)
+
+Purpose:
+
+Forward-looking operational management.
+
+Refresh:
+
+Daily
+
+Pipeline:
+
+run_ops_pipeline.py
+
+Schemas:
+
+staging
+warehouse
+
+Examples:
+
+- Pathway monitoring
+- Capacity planning
+- Demand forecasting
+
+### ACT (Treatment Activity Intelligence)
+
+Purpose:
+
+Retrospective activity reporting.
+
+Refresh:
+
+Monthly
+
+Pipeline:
+
+run_act_pipeline.py
+
+Schemas:
+
+rtds_raw
+rtds
+sact_raw
+sact
+
+Examples:
+
+- RTDS reporting
+- SACT reporting
+- Patient starts reporting
+
+## Refresh Pipelines
+
+### OPS
+
+Script:
+
+Source/Python/run_ops_pipeline.py
+
+Schedule:
+
+Daily
+
+### ACT
+
+Script:
+
+Source/Python/run_act_pipeline.py
+
+Schedule:
+
+Monthly
+
+Functions:
+
+- Load RTDS
+- Refresh RTDS facts
+- Refresh SACT facts
+- Refresh reporting marts
+- Produce QC summary
+- Archive source files
+
+
+## ACT File Management
+
+Input Folders
+
+C:\IDR\RAW\RTDS
+
+C:\IDR\RAW\SACT
+
+Archive Folders
+
+C:\IDR\Archive\RTDS
+
+C:\IDR\Archive\SACT
+
+Process
+
+Users copy validated files into RAW folders.
+
+ACT processes files.
+
+Files are archived only after successful completion.
+
+## GitHub Repository
+
+Repository:
+
+PHU-oncology-idr
+
+Issues:
+
+Used for:
+- Bugs
+- Enhancements
+- Data Quality Reviews
+- Data Requests
+
+Milestones:
+
+Used to track major developments.
+
+Current Architecture:
+
+V1.0 Repository Consolidation
+V1.1 Treatment Activity Intelligence
