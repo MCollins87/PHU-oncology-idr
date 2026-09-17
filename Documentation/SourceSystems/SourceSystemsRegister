@@ -1,0 +1,15 @@
+# Source Systems
+
+## Aria RO
+
+| Report        | Purpose                                         | Automation     |
+| ------------- | ----------------------------------------------- | -------------- |
+| `RT_Referral` | Reports all Registration Tasks                  | Daily at 05:00 |
+| `RT_CT`       | Reports all CT activity                         | Daily at 08:00 |
+| `RT_Treat`    | Reports all first treatment appointments        | Daily at 05:00 |
+| `RT_ECAD`     | Reports all ECAD tasks created                  | Daily at 02:00 |
+| `All_Treat_00`| All treatment activity used for capacity        | Daily at 02:00 |
+| `RT_Bookings` | Report the Bookings Tasks                       | Daily at 12:15 |
+| `RT_CT_Import`| Reports the import CT tasks                     | Daily          |
+
+
