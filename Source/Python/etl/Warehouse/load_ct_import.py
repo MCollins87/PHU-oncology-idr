@@ -3,23 +3,57 @@
 # Performs necessary cleaning and transformation, and then loads the data into a staging table in PostgreSQL.
 # Written by: Mark Collins | Date: 2024-09-14
 
+"""
+Load the latest RT_CT_Import CSV file into staging.rt_ct_import.
+
+Expected default folder:
+    C:\\IDR\\RAW\\RT_CT_Import
+
+The folder can be overridden using:
+    ARIA_CT_IMPORT_FOLDER
+"""
+
+import logging
 import os
+import re
+from pathlib import Path
+
 import pandas as pd
 import psycopg2
-from psycopg2.extras import execute_values
 from dotenv import load_dotenv
-import logging
+from psycopg2.extras import execute_values
+
+
+# ============================================================
+# PATHS AND LOGGING
+# ============================================================
+
+SCRIPT_PATH = Path(__file__).resolve()
+
+# load_ct_import.py is expected to be located under:
+# Source/Python/etl/Warehouse/
+PYTHON_ROOT = SCRIPT_PATH.parents[2]
+
+ENV_FILE = PYTHON_ROOT / ".env"
+
+LOG_FOLDER = Path(r"C:\IDR\logs")
+LOG_FOLDER.mkdir(parents=True, exist_ok=True)
+
+LOG_FILE = LOG_FOLDER / "etl.log"
 
 logging.basicConfig(
-    filename=r"C:\IDR\logs\etl.log",
+    filename=LOG_FILE,
     level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
+    format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
-# ----------------------------------------
-# LOAD ENVIRONMENT VARIABLES
-# ----------------------------------------
-load_dotenv()
+
+# ============================================================
+# ENVIRONMENT VARIABLES
+# ============================================================
+
+load_dotenv(ENV_FILE)
+
 DB_CONFIG = {
     "host": os.getenv("PGHOST"),
     "port": os.getenv("PGPORT"),
@@ -28,129 +62,424 @@ DB_CONFIG = {
     "password": os.getenv("PGPASSWORD"),
 }
 
-DATA_PATH = os.getenv(
-    "ARIA_CT_IMPORT_FILE_PATH",
-    r"C:\IDR\RAW\ARIA_CT_Import"
+DATA_FOLDER = Path(
+    os.getenv(
+        "ARIA_CT_IMPORT_FOLDER",
+        r"C:\IDR\RAW\ARIA_CT_Import",
+    )
 )
 
-# ----------------------------------------
+FILE_PREFIX = "RT_CT_Import"
+
+
+# ============================================================
+# EXPECTED COLUMNS
+# ============================================================
+
+EXPECTED_COLUMNS = [
+    "patient_id",
+    "nhs_number",
+    "activity_name",
+    "appointment_status",
+    "scheduled_end_datetime",
+    "activity_start_datetime",
+    "activity_end_datetime",
+    "activity_created_by",
+    "activity_instance_id",
+]
+
+DATE_COLUMNS = [
+    "scheduled_end_datetime",
+    "activity_start_datetime",
+    "activity_end_datetime",
+]
+
+
+# ============================================================
 # HELPER FUNCTIONS
-# ----------------------------------------
+# ============================================================
 
-# Get latest file in the specified folder with the given prefix
-def get_latest_file(folder, prefix):
-    files = [
-        f for f in os.listdir(folder)
-        if f.startswith(prefix) and f.endswith(".csv")
+def validate_database_config():
+    """Ensure all required PostgreSQL environment variables exist."""
+
+    missing = [
+        key
+        for key, value in DB_CONFIG.items()
+        if value is None or str(value).strip() == ""
     ]
-    if not files:
-        raise FileNotFoundError(f"No files found with prefix '{prefix}' in folder '{folder}'")
-    latest_file = max(files, key=lambda x: os.path.getctime(os.path.join(folder, x)))
-    return os.path.join(folder, latest_file)
 
-# Clean and standardize column names in the DataFrame
-def clean_columns(df):
-    df.columns = (
-        df.columns
-        .str.replace('\ufeff', '')
-        .str.strip()
-        .str.lower()
-        .str.replace(" ", "_")
-        .str.replace("-", "_")
-    )
-    df = df.rename(columns={
+    if missing:
+        raise RuntimeError(
+            "Missing PostgreSQL environment variables for: "
+            + ", ".join(missing)
+        )
+
+
+def get_latest_file(folder: Path, prefix: str) -> Path:
+    """
+    Return the most recently modified CSV file whose filename begins
+    with the supplied prefix.
+    """
+
+    if not folder.exists():
+        raise FileNotFoundError(
+            f"Input folder does not exist: {folder}"
+        )
+
+    if not folder.is_dir():
+        raise NotADirectoryError(
+            f"Configured input path is not a folder: {folder}"
+        )
+
+    files = [
+        path
+        for path in folder.iterdir()
+        if path.is_file()
+        and path.suffix.lower() == ".csv"
+        and path.name.lower().startswith(prefix.lower())
+    ]
+
+    if not files:
+        raise FileNotFoundError(
+            f"No CSV files beginning with '{prefix}' were found in "
+            f"'{folder}'."
+        )
+
+    return max(files, key=lambda path: path.stat().st_mtime)
+
+
+def normalise_column_name(column_name: str) -> str:
+    """
+    Normalise an Aria column heading for reliable mapping.
+
+    Examples:
+        PatientId                -> patientid
+        ScheduledEndTime         -> scheduledendtime
+        ctrActivityInstanceSer   -> ctractivityinstanceser
+    """
+
+    cleaned = str(column_name).replace("\ufeff", "").strip().lower()
+    return re.sub(r"[^a-z0-9]", "", cleaned)
+
+
+def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Map the Aria report headings to PostgreSQL column names."""
+
+    column_map = {
         "patientid": "patient_id",
         "nhsnumber": "nhs_number",
         "activityname": "activity_name",
         "appointmentstatus": "appointment_status",
+        "scheduledendtime": "scheduled_end_datetime",
         "scheduledenddatetime": "scheduled_end_datetime",
         "activitystartdatetime": "activity_start_datetime",
         "activityenddatetime": "activity_end_datetime",
-        "activitycreatedby": "activity_completed_by",
-        "ctracticityinstanceser": "activity_instance_id" #(logs last person to edit task, and therfore used as completed by).
-    })
-    return df
+        "activitycreatedby": "activity_created_by",
+        "ctractivityinstanceser": "activity_instance_id",
+    }
 
-# Convert date columns to datetime format
-def convert_dates(df):
-    df["scheduled_end_datetime"] = pd.to_datetime(df["scheduled_end_datetime"], errors="coerce")
-    df["activity_start_datetime"] = pd.to_datetime(df["activity_start_datetime"], errors="coerce")
-    df["activity_end_datetime"] = pd.to_datetime(df["activity_end_datetime"], errors="coerce")
-    return df
+    original_columns = list(df.columns)
 
-# Clean na values in the DataFrame by replacing them with None
-def clean_value(val):
-    if pd.isna(val):
-        return None
-    return val
+    df.columns = [
+        column_map.get(
+            normalise_column_name(column),
+            normalise_column_name(column),
+        )
+        for column in df.columns
+    ]
 
-# Load data into PostgreSQL staging table
-def load_data():
-    logging.info("loading RT CT Import data from CSV...")
-    file_path = get_latest_file(DATA_PATH, "RT_CT_Import")
-    logging.info(f"using file: {file_path}")
-    df = pd.read_csv(file_path, encoding="utf-8-sig")
-    logging.info("cleaning and transforming data...")
-    df = clean_columns(df)
-    df = convert_dates(df)
-    logging.info(f"loaded {len(df)} rows.")
-    return df
+    missing_columns = [
+        column
+        for column in EXPECTED_COLUMNS
+        if column not in df.columns
+    ]
 
-def upsert_data(df):
-    logging.info("upserting data into PostgreSQL...")
-    conn = psycopg2.connect(**DB_CONFIG)
-    cursor = conn.cursor()
+    if missing_columns:
+        raise ValueError(
+            "The RT_CT_Import file is missing required columns: "
+            + ", ".join(missing_columns)
+            + ". Original CSV headings were: "
+            + ", ".join(str(column) for column in original_columns)
+        )
 
-    logging.info("preparing data for upsert...")
-    records = []
-    for _, row in df.iterrows():
-        records.append((
-            clean_value(row["patient_id"]),
-            clean_value(row["nhs_number"]),
-            clean_value(row["activity_name"]),
-            clean_value(row["appointment_status"]),
-            clean_value(row["scheduled_end_datetime"]),
-            clean_value(row["activity_start_datetime"]),
-            clean_value(row["activity_end_datetime"]),
-            clean_value(row["activity_completed_by"]),
-            clean_value(row["activity_instance_id"])
-        ))
+    return df[EXPECTED_COLUMNS].copy()
 
-    logging.info(f"Inserting {len(records)} rows")
-    query = """
-    INSERT INTO staging.rt_ct_import (  
-        patient_id,
-        nhs_number,
-        activity_name,
-        appointment_status,
-        scheduled_end_datetime,
-        activity_start_datetime,
-        activity_end_datetime,
-        activity_completed_by,
-        activity_instance_id
-    ) VALUES %s
-    ON CONFLICT (activity_instance_id) 
-    DO UPDATE SET 
-    scheduled_end_datetime = EXCLUDED.scheduled_end_datetime,
-    appointment_status = EXCLUDED.appointment_status,
-    activity_start_datetime = EXCLUDED.activity_start_datetime,
-    activity_end_datetime = EXCLUDED.activity_end_datetime,
-    activity_completed_by = EXCLUDED.activity_completed_by;
+
+def clean_identifier_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean identifiers while retaining them as text.
+
+    Keeping NHS number, patient ID and the Aria activity serial as text
+    avoids numeric conversion and scientific notation.
     """
 
-    execute_values(cursor, query, records)
-    conn.commit()
-    cursor.close()
-    conn.close()
-    logging.info("data upsert complete.")
+    identifier_columns = [
+        "patient_id",
+        "nhs_number",
+        "activity_instance_id",
+    ]
 
-# Main function
-if __name__ == "__main__":
-    logging.info("Starting ETL process for RT CT Import data...")
+    for column in identifier_columns:
+        df[column] = (
+            df[column]
+            .astype("string")
+            .str.strip()
+            .replace(
+                {
+                    "": pd.NA,
+                    "nan": pd.NA,
+                    "None": pd.NA,
+                    "<NA>": pd.NA,
+                }
+            )
+        )
+
+    return df
+
+
+def convert_dates(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert the three Aria date/time fields to pandas datetimes."""
+
+    for column in DATE_COLUMNS:
+        original_values = df[column].copy()
+
+        df[column] = pd.to_datetime(
+            df[column],
+            errors="coerce",
+            dayfirst=True,
+            format="mixed",
+        )
+
+        invalid_count = (
+            original_values.notna()
+            & original_values.astype(str).str.strip().ne("")
+            & df[column].isna()
+        ).sum()
+
+        if invalid_count:
+            logging.warning(
+                "%s value(s) in %s could not be converted to datetime.",
+                invalid_count,
+                column,
+            )
+
+    return df
+
+
+def validate_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Validate the natural key and remove duplicate activity instances.
+
+    If the same activity appears more than once in a snapshot file, the
+    final occurrence is retained.
+    """
+
+    missing_key_count = df["activity_instance_id"].isna().sum()
+
+    if missing_key_count:
+        raise ValueError(
+            f"{missing_key_count} row(s) have no ctrActivityInstanceSer. "
+            "The load has been stopped because activity_instance_id is "
+            "the staging-table key."
+        )
+
+    duplicate_count = df.duplicated(
+        subset=["activity_instance_id"],
+        keep="last",
+    ).sum()
+
+    if duplicate_count:
+        logging.warning(
+            "%s duplicate activity_instance_id row(s) were found. "
+            "The final occurrence of each activity was retained.",
+            duplicate_count,
+        )
+
+        df = df.drop_duplicates(
+            subset=["activity_instance_id"],
+            keep="last",
+        )
+
+    return df
+
+
+def clean_value(value):
+    """Convert pandas null values to Python None for psycopg2."""
+
+    if pd.isna(value):
+        return None
+
+    if isinstance(value, pd.Timestamp):
+        return value.to_pydatetime()
+
+    return value
+
+
+# ============================================================
+# EXTRACT AND TRANSFORM
+# ============================================================
+
+def load_data(file_path: Path) -> pd.DataFrame:
+    """Read, clean and validate the selected RT_CT_Import CSV."""
+
+    logging.info("Reading RT CT Import file: %s", file_path)
+
+    df = pd.read_csv(
+        file_path,
+        encoding="utf-8-sig",
+        dtype=str,
+    )
+
+    source_row_count = len(df)
+
+    logging.info(
+        "Read %s source row(s) from %s.",
+        source_row_count,
+        file_path.name,
+    )
+
+    df = clean_columns(df)
+    df = clean_identifier_columns(df)
+    df = convert_dates(df)
+    df = validate_rows(df)
+
+    logging.info(
+        "%s validated row(s) are ready for database loading.",
+        len(df),
+    )
+
+    return df
+
+
+# ============================================================
+# LOAD
+# ============================================================
+
+def upsert_data(df: pd.DataFrame, source_file: str) -> int:
+    """Insert or update RT CT Import activities."""
+
+    records = []
+
+    for row in df.itertuples(index=False):
+        records.append(
+            (
+                clean_value(row.activity_instance_id),
+                clean_value(row.patient_id),
+                clean_value(row.nhs_number),
+                clean_value(row.activity_name),
+                clean_value(row.appointment_status),
+                clean_value(row.scheduled_end_datetime),
+                clean_value(row.activity_start_datetime),
+                clean_value(row.activity_end_datetime),
+                clean_value(row.activity_created_by),
+                source_file,
+            )
+        )
+
+    query = """
+        INSERT INTO staging.rt_ct_import (
+            activity_instance_id,
+            patient_id,
+            nhs_number,
+            activity_name,
+            appointment_status,
+            scheduled_end_datetime,
+            activity_start_datetime,
+            activity_end_datetime,
+            activity_created_by,
+            source_file
+        )
+        VALUES %s
+        ON CONFLICT (activity_instance_id)
+        DO UPDATE SET
+            patient_id = EXCLUDED.patient_id,
+            nhs_number = EXCLUDED.nhs_number,
+            activity_name = EXCLUDED.activity_name,
+            appointment_status = EXCLUDED.appointment_status,
+            scheduled_end_datetime = EXCLUDED.scheduled_end_datetime,
+            activity_start_datetime = EXCLUDED.activity_start_datetime,
+            activity_end_datetime = EXCLUDED.activity_end_datetime,
+            activity_created_by = EXCLUDED.activity_created_by,
+            source_file = EXCLUDED.source_file,
+            load_timestamp = CURRENT_TIMESTAMP;
+    """
+
+    conn = None
+
     try:
-        df = load_data()
-        upsert_data(df)
-        logging.info("ETL process completed successfully.")
-    except Exception as e:
-        logging.error(f"ETL process failed: {e}")
+        conn = psycopg2.connect(**DB_CONFIG)
+
+        with conn.cursor() as cursor:
+            execute_values(
+                cursor,
+                query,
+                records,
+                page_size=1000,
+            )
+
+        conn.commit()
+
+        logging.info(
+            "Successfully upserted %s RT CT Import row(s).",
+            len(records),
+        )
+
+        return len(records)
+
+    except Exception:
+        if conn is not None:
+            conn.rollback()
+
+        logging.exception(
+            "The RT CT Import database transaction failed."
+        )
+        raise
+
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+# ============================================================
+# MAIN
+# ============================================================
+
+def main():
+    logging.info("Starting RT CT Import ETL process.")
+
+    validate_database_config()
+
+    file_path = get_latest_file(
+        DATA_FOLDER,
+        FILE_PREFIX,
+    )
+
+    logging.info("Selected source file: %s", file_path)
+
+    df = load_data(file_path)
+
+    rows_loaded = upsert_data(
+        df=df,
+        source_file=file_path.name,
+    )
+
+    logging.info(
+        "RT CT Import ETL completed successfully. "
+        "Source file: %s. Rows loaded: %s.",
+        file_path.name,
+        rows_loaded,
+    )
+
+    print(
+        f"RT CT Import load completed successfully: "
+        f"{rows_loaded} row(s) loaded from {file_path.name}"
+    )
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        logging.exception("RT CT Import ETL process failed.")
+        print(f"RT CT Import load failed: {exc}")
         raise

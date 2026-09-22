@@ -45,14 +45,14 @@ def run_sql_inline(sql):
 
 # STEP1: Load Staging
 try:
-    run_python("etl/load_rt_referral.py")
-    run_python("etl/load_booking.py")
-    run_python("etl/load_ecad.py")
-    run_python("etl/load_ct.py")
-    run_python("etl/load_treat.py")
-    run_python("etl/load_machine_appointments.py")
-    run_python("etl/load_oncology.py")
-    run_python("etl/load_clinic_routine.py")
+    run_python("etl/Warehouse/load_rt_referral.py")
+    run_python("etl/Warehouse/load_booking.py")
+    run_python("etl/Warehouse/load_ecad.py")
+    run_python("etl/Warehouse/load_ct.py")
+    run_python("etl/Warehouse/load_treat.py")
+    run_python("etl/Warehouse/load_machine_appointments.py")
+    run_python("etl/Warehouse/load_oncology.py")
+    run_python("etl/Warehouse/load_clinic_routine.py")
 except Exception as e:
     logging.info(f"Pipeline failes {e}")
     raise
@@ -71,31 +71,31 @@ run_sql_inline("""
                """)
 
 # STEP 3: Oncology Pathway
-run_sql("../SQL/intermediate/int_oncology_referrals.sql")
-run_sql("../SQL/intermediate/int_oncology_clinic_events.sql")
-run_sql("../SQL/facts/fact_oncology_pathway.sql")
-run_sql("../SQL/intermediate/int_oncology_events.sql")
+run_sql("../SQL/warehouse/intermediate/int_oncology_referrals.sql")
+run_sql("../SQL/warehouse/intermediate/int_oncology_clinic_events.sql")
+run_sql("../SQL/warehouse/facts/fact_oncology_pathway.sql")
+run_sql("../SQL/warehouse/intermediate/int_oncology_events.sql")
 
 # STEP 4: RT Intermediate
 
-run_sql("../SQL/intermediate/int_rt_referral.sql")
-run_sql("../SQL/intermediate/int_rt_booking_events.sql")
-run_sql("../SQL/intermediate/int_rt_ecad_events.sql")
-run_sql("../SQL/intermediate/int_rt_ct_events.sql")
-run_sql("../SQL/intermediate/int_rt_treat_events.sql")
-run_sql("../SQL/intermediate/int_rt_trt_summary.sql")
-run_sql("../SQL/intermediate/int_rt_machine_appointments.sql")
-run_sql("../SQL/intermediate/int_rt_machine_capacity.sql")
+run_sql("../SQL/warehouse/intermediate/int_rt_referral.sql")
+run_sql("../SQL/warehouse/intermediate/int_rt_booking_events.sql")
+run_sql("../SQL/warehouse/intermediate/int_rt_ecad_events.sql")
+run_sql("../SQL/warehouse/intermediate/int_rt_ct_events.sql")
+run_sql("../SQL/warehouse/intermediate/int_rt_treat_events.sql")
+run_sql("../SQL/warehouse/intermediate/int_rt_trt_summary.sql")
+run_sql("../SQL/warehouse/intermediate/int_rt_machine_appointments.sql")
+run_sql("../SQL/warehouse/intermediate/int_rt_machine_capacity.sql")
 
 # STEP 5: Dimensions
-run_sql("../SQL/dimensions/dim_rcr_category.sql")
-run_sql("../SQL/dimensions/dim_rcr_targets.sql")
+run_sql("../SQL/Warehouse/dim_rcr_category.sql")
+run_sql("../SQL/Warehouse/dim_rcr_targets.sql")
 
 # STEP 6: Final Treatment FACT Tables
 
-run_sql("../SQL/facts/fact_predicted_rt_demand.sql")
-run_sql("../SQL/facts/fact_rt_pathway.sql")
-run_sql("../SQL/facts/fact_rt_machine_capacity.sql")
-run_sql("../sql/facts/fact_full_pathway.sql")
+run_sql("../SQL/Warehouse/facts/fact_predicted_rt_demand.sql")
+run_sql("../SQL/Warehouse/facts/fact_rt_pathway.sql")
+run_sql("../SQL/Warehouse/facts/fact_rt_machine_capacity.sql")
+run_sql("../SQL/Warehouse/facts/fact_full_pathway.sql")
 
 logging.info("Pipeline complete")
