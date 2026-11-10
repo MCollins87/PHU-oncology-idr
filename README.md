@@ -50,7 +50,9 @@ Monthly
 
 Pipeline:
 
-run_activity_pipeline.py (planned)
+Source/run_activity_pipeline.py
+
+The ACT pipeline performs the controlled monthly ingestion and refresh of RTDS and SACT data, refreshes downstream reporting structures, performs QC checks, and archives successfully processed source files
 
 ## Repository Structure
 
