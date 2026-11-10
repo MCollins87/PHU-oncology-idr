@@ -64,7 +64,11 @@ def validate_files():
     attendance_file = RTDS_DIR / "RTDS UK - CSV1 Attendance.csv"
     prescription_file = RTDS_DIR / "RTDS UK - CSV2 Prescription.csv"
 
-    sact_files = list(SACT_DIR.glob("SACT_v3_*.csv"))
+    sact_files = [
+        file
+        for file in SACT_DIR.glob("*.csv")
+        if file.name.lower().startswith("sact_v3_")
+    ]
 
     if not attendance_file.exists():
         logging.info("RTDS attendance file not found. Skipping ACT pipeline.")
@@ -98,6 +102,10 @@ def refresh_sact():
 
     logging.info("Starting SACT refresh")
 
+    # Load validated monthly SACT extract into RAW
+    run_python("etl/SACT/load_sact_administration.py")
+
+    # Rebuild patient dimension
     run_sql(
         SQL_DIR
         / "SACT"
@@ -105,6 +113,7 @@ def refresh_sact():
         / "dim_patient.sql"
     )
 
+    # Rebuild regimen fact table
     run_sql(
         SQL_DIR
         / "SACT"
@@ -203,22 +212,72 @@ def archive_files():
 
 
 if __name__ == "__main__":
+
     logging.info("ACT Pipeline started")
 
-    if SKIP_RTDS_LOADS:
+    try:
+
+        # ----------------------------------------
+        # VALIDATE INPUT FILES
+        # ----------------------------------------
+
+        if not validate_files():
+
+            raise RuntimeError(
+                "ACT pipeline input validation failed."
+            )
+
+        # ----------------------------------------
+        # RTDS
+        # ----------------------------------------
+
+        if SKIP_RTDS_LOADS:
+
+            logging.info(
+                "Skipping RTDS raw loads - "
+                "refreshing facts only"
+            )
+
+            run_python(
+                "etl/RTDS/refresh_rtds_facts.py"
+            )
+
+        else:
+
+            refresh_rtds()
+
+        # ----------------------------------------
+        # SACT
+        # ----------------------------------------
+
+        refresh_sact()
+
+        # ----------------------------------------
+        # MARTS
+        # ----------------------------------------
+
+        refresh_marts()
+
+        # ----------------------------------------
+        # QC
+        # ----------------------------------------
+
+        qc_summary()
+
+        # ----------------------------------------
+        # ARCHIVE
+        # ----------------------------------------
+
+        archive_files()
+
         logging.info(
-            "Skipping RTDS loads - data already loaded"
+            "ACT Pipeline completed successfully"
         )
-        run_python(
-            "etl/RTDS/refresh_rtds_facts.py"
+
+    except Exception:
+
+        logging.exception(
+            "ACT Pipeline failed"
         )
-    else:
-        refresh_rtds()
-    refresh_sact()
-    refresh_marts()
-    qc_summary()
-    archive_files()
 
-    logging.info("ACT Pipeline completed successfully")
-
-
+        raise
