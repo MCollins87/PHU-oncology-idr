@@ -83,27 +83,74 @@ def clean_columns(df):
 
 
 def convert_dates(df):
-
     date_columns = [
         "decision_to_treat_date_radiotherapy_treatment_episode",
         "earliest_clinically_appropriate_date",
         "referral_date",
         "date_of_planning_appointment",
-        "time_and_date_of_exposure"
+    ]
+
+    datetime_columns = [
+        "time_and_date_of_exposure",
     ]
 
     for col in date_columns:
-
         if col in df.columns:
+            source = df[col].astype("string").str.strip()
+            populated = source.notna() & source.ne("")
 
-            df[col] = pd.to_datetime(
-                df[col],
+            parsed = pd.to_datetime(
+                source,
+                format="%Y-%m-%d",
                 errors="coerce",
-                dayfirst=True
             )
 
-    return df
+            failed = populated & parsed.isna()
 
+            if failed.any():
+                examples = (
+                    source[failed]
+                    .drop_duplicates()
+                    .head(10)
+                    .tolist()
+                )
+
+                raise ValueError(
+                    f"{col}: {failed.sum()} populated values "
+                    f"failed ISO date parsing. Examples: {examples}"
+                )
+
+            df[col] = parsed.dt.date
+
+    for col in datetime_columns:
+        if col in df.columns:
+            source = df[col].astype("string").str.strip()
+            populated = source.notna() & source.ne("")
+
+            parsed = pd.to_datetime(
+                source,
+                format="%Y-%m-%d %H:%M:%S",
+                errors="coerce",
+            )
+
+            failed = populated & parsed.isna()
+
+            if failed.any():
+                examples = (
+                    source[failed]
+                    .drop_duplicates()
+                    .head(10)
+                    .tolist()
+                )
+
+                raise ValueError(
+                    f"{col}: {failed.sum()} populated values "
+                    f"failed ISO datetime parsing. Examples: {examples}"
+                )
+
+            df[col] = parsed
+
+    return df
 
 def clean_value(value):
 
