@@ -644,4 +644,19 @@ if __name__ == "__main__":
 
     print("")
     print("SEPTEMBER SOURCE VALIDATION PASSED")
-    print("No database changes were made.")
+    print("")
+    print("All September pre-load checks PASSED.")
+    print("Preparing isolated rebuild load...")
+
+    rows_loaded = load_to_staging(
+        df,
+        source_file,
+        rebuild_load_id,
+    )
+
+    print("")
+    print("SEPTEMBER REBUILD LOAD COMPLETED")
+    print(f"Rows loaded: {rows_loaded:,}")
+    print("Rebuild load ID: 2")
+    print("Target: rtds_rebuild.prescription")
+    print("Production rtds_raw.prescription was not modified.")
