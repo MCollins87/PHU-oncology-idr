@@ -455,7 +455,7 @@ def load_to_staging(df, file_path, load_id):
         )
 
     query = """
-    INSERT INTO rtds_raw.prescription
+    INSERT INTO rtds_rebuild.prescription
     (
         load_id,
         nhs_number,
@@ -533,6 +533,67 @@ def load_to_staging(df, file_path, load_id):
 
     return len(records)
 
+# Rebuild validation
+def validate_rebuild_target():
+    """
+    Confirm the isolated RTDS rebuild target exists and is empty.
+
+    This function performs read-only database checks.
+    It does not insert, update, or delete data.
+    """
+
+    conn = psycopg2.connect(**DB_CONFIG)
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT to_regclass(
+                    'rtds_rebuild.prescription'
+                )
+                """
+            )
+
+            table_name = cur.fetchone()[0]
+
+            if table_name is None:
+                raise RuntimeError(
+                    "Safety check failed: "
+                    "rtds_rebuild.prescription does not exist."
+                )
+
+            cur.execute(
+                """
+                SELECT COUNT(*)
+                FROM rtds_rebuild.prescription
+                """
+            )
+
+            row_count = cur.fetchone()[0]
+
+            print(
+                "Rebuild target confirmed: "
+                "rtds_rebuild.prescription"
+            )
+
+            print(
+                f"Current rebuild rows: {row_count:,}"
+            )
+
+            if row_count != 0:
+                raise RuntimeError(
+                    "Safety check failed: "
+                    "rtds_rebuild.prescription is not empty. "
+                    f"Current rows: {row_count:,}"
+                )
+
+            print(
+                "Rebuild target safety check PASSED"
+            )
+
+    finally:
+        conn.close()
+
 
 # ----------------------------------------
 # MAIN
@@ -545,6 +606,11 @@ if __name__ == "__main__":
     legacy_file = (
         r"C:\IDR\Archive\RTDS\RTDSUK_CSV2_Prescription.csv"
     )
+
+    rebuild_load_id = 1
+    print(f"Rebuild load ID reserved: {rebuild_load_id}")
+
+    validate_rebuild_target()
 
     print(f"Reading: {legacy_file}")
 
@@ -561,6 +627,20 @@ if __name__ == "__main__":
     print("Validating legacy date fields...")
 
     df = convert_dates(df)
+
+    expected_rows = 160028
+    actual_rows = len(df)
+    print("")
+    print("Pre-load row-count validation:")
+    print(f"Expected rows: {expected_rows:,}")
+    print(f"Actual rows:   {actual_rows:,}")
+
+    if expected_rows != actual_rows:
+        raise RuntimeError(
+            "Safety check failed: unexpected legacy row count."
+            f"Expected {expected_rows:,}, but got {actual_rows:,}."
+        )
+    print("Pre-load row-count validation PASSED")
 
     print("")
     print("Legacy clinical date-quality checks:")
@@ -643,7 +723,19 @@ if __name__ == "__main__":
     print("")
     print("LEGACY DATE VALIDATION PASSED")
     print(f"Rows validated: {len(df):,}")
-    print("No database changes were made.")
+    print("")
+    print("All pre-load validation checks PASSED.")
+    print("Preparing isolated rebuild load...")
+    rows_loaded = load_to_staging(
+        df,
+        legacy_file,
+        rebuild_load_id,
+    )
+    print("")
+    print("REBUILD LOAD COMPLETED")
+    print(f"Rows loaded: {rows_loaded:,}")
+    print("Target: rtds_rebuild.prescription")
+    print("Production rtds_raw.prescription was not modified.")
 
 """ if __name__ == "__main__":
 
