@@ -697,3 +697,827 @@ table based on the inspected 51-column `rtds_raw.prescription` structure.
 Do not alter production RTDS tables.
 
 Proceed one step at a time and validate each stage before continuing.
+
+---
+
+
+# 24 November 2026 Progress Update
+
+## 20. Executive Update
+
+Significant progress was made on Issue 26 on 24 November 2026.
+
+The date-parsing defect has now been confirmed to affect **both RTDS Prescription and RTDS Attendance ingestion**.
+
+A complete corrected raw reconstruction has been created in the isolated `rtds_rebuild` schema for:
+
+- Prescription: **196,486 rows**
+- Attendance: **79,350 rows**
+
+Both corrected raw reconstructions contain exactly the same number of source rows as the corresponding production raw tables. No production RTDS raw, core or mart data has been replaced.
+
+Corrected test versions have also been built and validated for:
+
+- `rtds_rebuild.dim_patient`
+- `rtds_rebuild.fact_episode`
+- `rtds_rebuild.fact_prescription`
+
+The next core object requiring reconstruction and validation is `fact_attendance`.
+
+---
+
+# 21. Corrected Prescription Raw Reconstruction
+
+A dedicated rebuild schema was created:
+
+`rtds_rebuild`
+
+An isolated corrected raw table was created:
+
+`rtds_rebuild.prescription`
+
+The table structure was confirmed to match the 51-column production `rtds_raw.prescription` structure.
+
+Four source loads were reconstructed:
+
+| Rebuild Load | Source | Rows |
+|---:|---|---:|
+| 1 | Historical legacy prescription extract | 160,028 |
+| 2 | September 2026 extract | 11,952 |
+| 3 | October 2026 extract | 11,708 |
+| 4 | November 2026 extract | 12,798 |
+| **Total** | | **196,486** |
+
+This exactly matches the production `rtds_raw.prescription` row population.
+
+The historical source used the validated legacy parser supporting:
+
+- `DD/MM/YYYY`
+- `DD/MM/YYYY HH:MM`
+- Excel serial date values using origin `1899-12-30`
+
+The automated monthly extracts used strict explicit ISO parsing:
+
+- dates: `YYYY-MM-DD`
+- datetimes: `YYYY-MM-DD HH:MM:SS`
+
+All populated date values in all reconstructed source files parsed successfully.
+
+---
+
+# 22. Production vs Corrected Prescription Raw Data
+
+The complete corrected raw population was compared with production.
+
+| Measure | Production | Corrected Rebuild |
+|---|---:|---:|
+| Total rows | 196,486 | 196,486 |
+| Populated DTT | 182,187 | **189,917** |
+| Populated ECAD | 196,484 | **196,486** |
+| Populated referral | 167,100 | **189,489** |
+| Populated planning date | 173,742 | **181,794** |
+| Populated exposure | 189,502 | **196,486** |
+| Exposure before DTT | 3,365 | **28** |
+| Exposure before ECAD | 2,950 | **300** |
+| DTT before referral | 23,237 | 22,828 |
+| Earliest DTT | 23 May 2023 | 23 May 2023 |
+| Latest DTT | 10 Dec 2026 | **30 Oct 2026** |
+| Earliest exposure | 3 Jun 2024 | 3 Jun 2024 |
+| Latest exposure | 8 Dec 2026 | **31 Oct 2026** |
+
+The reconstruction therefore recovered:
+
+- **7,730 DTT values**
+- **2 ECAD values**
+- **22,389 referral dates**
+- **8,052 planning dates**
+- **6,984 exposure timestamps**
+
+It also removed the parser-generated future-date extremes.
+
+This provides strong evidence that the source population itself was intact and that the principal defect was introduced during ETL date parsing.
+
+---
+
+# 23. Residual Exposure-Before-DTT Investigation
+
+After correct parsing, only **28 exposure-before-DTT rows** remain.
+
+These correspond to:
+
+- **4 distinct episodes**
+- **4 distinct prescriptions**
+- intervals ranging from **-169 to -14 days**
+
+All four episodes:
+
+- occur only in historical rebuild load 1;
+- contain exactly one DTT;
+- do not recur in the September-November automated monthly extracts.
+
+These are therefore being treated as a bounded legacy source/business-rule issue rather than evidence that the corrected parser remains defective.
+
+They have not been automatically modified or excluded.
+
+---
+
+# 24. Head & Neck GIRFT Recalculation
+
+The original Head & Neck investigation contained 110 Radical-intent radiotherapy starts between:
+
+**1 November 2025 and 31 October 2026**
+
+After using the corrected RTDS reconstruction:
+
+- 110/110 episodes have DTT
+- 110/110 have treatment start
+- **0 negative DTT-to-treatment intervals remain**
+
+One H&N episode contained two DTT values:
+
+- 1 September 2025
+- 3 October 2025
+
+The later DTT was clinically validated in ARIA.
+
+Human validation established that:
+
+- `2025-09-01` was an erroneous DTT caused by a training issue;
+- the error was subsequently identified through quality checking;
+- `2025-10-03` was the corrected clinical DTT.
+
+This demonstrates why arbitrary `MIN(DTT)` is not an appropriate episode-selection rule.
+
+## Corrected GIRFT results
+
+For the 110 H&N Radical-intent episodes:
+
+| Measure | DTT → Treatment | ECAD → Treatment |
+|---|---:|---:|
+| Date complete | 110/110 | 110/110 |
+| Negative intervals | 0 | 0 |
+| Within 17 days | **0/110 (0.0%)** | **16/110 (14.5%)** |
+| Within 31 days | **58/110 (52.7%)** | **107/110 (97.3%)** |
+| Mean interval | 35.1 days | 22.2 days |
+| Median interval | 31 days | 24 days |
+
+The GIRFT benchmarking workbook has subsequently been populated with:
+
+- DTT → Treat ≤17 days: **0%**
+- ECAD → Treat ≤17 days: **14.5%**
+- DTT → Treat ≤31 days: **52.7%**
+- ECAD → Treat ≤31 days: **97.3%**
+
+The DTT measures answer the GIRFT question directly. ECAD is retained as additional clinical context.
+
+Working cohort assumption remains:
+
+`practice_group = Head and Neck`
+and
+`treatment intent = Radical`
+
+---
+
+# 25. Episode Version-Selection Rule
+
+Testing the corrected data showed:
+
+- total corrected RTDS episodes: 7,259
+- latest snapshot has no DTT: 252
+- latest snapshot has one DTT: 7,006
+- latest snapshot has multiple DTT values: 1
+
+Missing DTT is **not automatically considered a data-quality defect**.
+
+Clinical context identified that:
+
+- DTT may not always be recorded in the same way for CAT4/MSCC emergency pathways;
+- ECAD may be the more appropriate operational date for Cancer Waiting Times reporting.
+
+The current candidate episode-selection principle is:
+
+> Use the latest available RTDS source snapshot for episode-level attributes, with a deterministic record-selection rule within that snapshot.
+
+This is preferable to selecting episode attributes by unrestricted maximum exposure timestamp across all accumulated source data.
+
+Where multiple clinically meaningful values remain within the authoritative snapshot, they should not be resolved using arbitrary `MIN()` or `MAX()` without an explicit business rule or human validation.
+
+---
+
+# 26. Patient Dimension Investigation
+
+The corrected prescription reconstruction contains:
+
+**7,259 distinct RTDS episodes**
+
+Initial comparison against production `rtds.dim_patient` found:
+
+- 7,215 episodes matched an existing production patient
+- 44 episodes were unmatched
+
+Further investigation classified the 44 unmatched episodes as:
+
+| Category | Episodes |
+|---|---:|
+| QC/test episodes using local `Z%` identifier convention | 33 |
+| Genuine patients present in Attendance but excluded from production `dim_patient` | 7 |
+| Genuine prescription-only episodes with no Attendance record | 4 |
+
+The 7 Attendance-backed patients all:
+
+- have local patient identifier;
+- have trust internal system patient ID;
+- have DOB, name and postcode;
+- **do not have NHS numbers**.
+
+The production patient-dimension SQL uses:
+
+`WHERE nhs_number IS NOT NULL`
+
+and:
+
+`DISTINCT ON (nhs_number)`
+
+which explains why these patients were excluded.
+
+## Candidate patient identity rule
+
+A revised patient identity strategy was tested:
+
+1. Exclude confirmed local QC/test patients where local patient identifier begins `Z`.
+2. Use NHS number where populated.
+3. Where NHS number is absent, use Trust Internal System Patient ID.
+4. Use Attendance as the demographic authority.
+
+Validation results:
+
+- proposed patients: **6,714**
+- keyed by NHS number: **6,706**
+- keyed by trust ID fallback: **8**
+- records without usable patient key: **0**
+- conflicting identities: **0**
+- maximum local IDs per trust key: 1
+- maximum DOBs per key: 1
+
+An isolated test patient dimension was created:
+
+`rtds_rebuild.dim_patient`
+
+Rows loaded:
+
+**6,714**
+
+Against corrected Prescription:
+
+- non-QC episodes: 7,226
+- matched to rebuilt patient dimension: **7,222**
+- unmatched: **4**
+- QC episodes: 33
+
+Every non-QC episode with an Attendance record maps successfully to the rebuilt patient dimension.
+
+The remaining four episodes have no Attendance demographic record and were already absent from the production `rtds.fact_episode`. They remain excluded rather than having demographic records fabricated.
+
+---
+
+# 27. Diagnosis Classification Updates
+
+The governed diagnosis reference table was reviewed.
+
+Standard malignant/non-malignant classifications are range-based in:
+
+`reference.dim_diagnosis`
+
+Two explicit benign special mappings were validated.
+
+## Keloid
+
+Existing governed classification:
+
+| ICD | Tumour site | Disease group | Practice group |
+|---|---|---|---|
+| L91.0 | Keloid | Benign Conditions | Other |
+
+## Heterotopic Ossification
+
+One corrected candidate episode was coded:
+
+`M61.9 - Calcification and ossification of muscle, unspecified`
+
+The clinical referral record was manually validated in ARIA and confirmed treatment for:
+
+**Heterotopic Ossification**
+
+A new PHU-specific governed mapping was therefore added:
+
+| ICD | Tumour site | Disease group | Practice group |
+|---|---|---|---|
+| M61.9 | Heterotopic Ossification | Benign Conditions | Other |
+
+Both exact-code mappings have been added to `reference.dim_diagnosis`.
+
+The candidate classification process now:
+
+1. attempts exact full ICD mapping first;
+2. otherwise applies the existing three-character ICD range mapping;
+3. leaves genuinely missing ICD episodes unclassified.
+
+Validation:
+
+- candidate episodes: 7,222
+- classified episodes: **7,213**
+- missing ICD: **9**
+- coded but unclassified: **0**
+
+---
+
+# 28. Corrected Episode Fact
+
+An isolated corrected episode fact was created:
+
+`rtds_rebuild.fact_episode`
+
+Selection rules:
+
+- latest corrected rebuild load per episode;
+- latest exposure within that source snapshot as deterministic tie-break;
+- exclude local `Z%` QC/test episodes;
+- require a valid Attendance-backed rebuilt patient;
+- exact diagnosis mappings before range mappings;
+- missing DTT permitted.
+
+Rows loaded:
+
+**7,222**
+
+Acceptance validation:
+
+| Check | Result |
+|---|---:|
+| Fact rows | 7,222 |
+| Distinct episode identifiers | 7,222 |
+| Distinct patients | 6,708 |
+| Missing patient SK | 0 |
+| Missing DTT | 218 |
+| Missing ECAD | 0 |
+| Missing ICD | 9 |
+| Classified episodes | 7,213 |
+| Correct Keloid classifications | 6 |
+| Correct HO classifications | 1 |
+
+Constraints added:
+
+- primary key on `episode_sk`
+- unique `radiotherapy_episode_identifier`
+- foreign key to `rtds_rebuild.dim_patient`
+
+## Production comparison
+
+| Measure | Production | Rebuild |
+|---|---:|---:|
+| Episode rows | 7,209 | **7,222** |
+| Distinct patients | 6,699 | **6,708** |
+| Populated DTT | 6,808 | **7,004** |
+| Populated ECAD | 7,207 | **7,222** |
+| Populated referral date | 6,258 | **6,979** |
+| Populated ICD | 7,206 | **7,213** |
+| Classified episodes | 7,199 | **7,213** |
+| Latest DTT | 10 Dec 2026 | **30 Oct 2026** |
+
+Membership comparison:
+
+- in both production and rebuild: 7,209
+- production-only: **0**
+- rebuild-only: **13**
+
+Therefore the corrected fact is a strict superset of production.
+
+Of the 13 recovered episodes:
+
+- 7 relate to the validated Trust-ID fallback for patients without NHS number;
+- 6 relate to patients with NHS number in the patient dimension but whose Prescription records themselves contain only local/trust identifiers.
+
+For the 7,209 common episodes, attributes changed as follows:
+
+| Attribute | Episodes changed |
+|---|---:|
+| DTT | 281 |
+| ECAD | 10 |
+| Referral date | 1,097 |
+| Diagnosis ICD | 0 |
+| Treatment intent | 8 |
+| RCR category | 3 |
+| Tumour site | 7 |
+| Disease group | 7 |
+| Practice group | 7 |
+
+---
+
+# 29. Corrected Prescription Fact
+
+Production `rtds.fact_prescription` was confirmed to have:
+
+- 8,452 rows
+- 8,452 unique prescription identifiers
+- zero missing prescription identifiers
+- zero duplicates
+- zero orphaned episode links
+
+Correction testing identified:
+
+- candidate corrected prescriptions: **8,465**
+- prescriptions linked to multiple episodes: 0
+- prescriptions with attributes varying across snapshots: **1,215**
+- maximum loads per prescription: 4
+
+Because prescription attributes are not immutable across monthly snapshots, the candidate rule is:
+
+> Use the latest corrected RTDS snapshot containing the prescription, with latest exposure within that snapshot as the deterministic tie-break.
+
+An isolated corrected fact was created:
+
+`rtds_rebuild.fact_prescription`
+
+Rows loaded:
+
+**8,465**
+
+Acceptance validation:
+
+- 8,465 unique prescription identifiers
+- 0 missing prescription identifiers
+- 0 missing episode SK
+- all 7,222 accepted episodes represented
+- 0 orphaned episode references
+- 627 missing planning date
+- 0 missing prescribed dose
+- 0 missing prescribed fractions
+- 0 missing actual dose
+
+Production comparison:
+
+- prescriptions in both: 8,452
+- production-only: **0**
+- rebuild-only: **13**
+
+Attribute differences among common prescriptions:
+
+| Attribute | Changed prescriptions |
+|---|---:|
+| Treatment region | 0 |
+| Treatment site | 1 |
+| Treatment modality | 0 |
+| Specialist treatment | 2 |
+| Plan type | 0 |
+| Prescribed dose | 10 |
+| Prescribed fractions | 7 |
+| Actual dose | 689 |
+| Planning date | 373 |
+
+Of the 689 actual-dose differences:
+
+- 687 corrected values are higher than production;
+- 2 are lower;
+- no NULL/populated transitions were identified.
+
+The two lower-dose cases were separately reviewed at aggregate level. In both cases the prescribed dose changed alongside actual dose, consistent with a prescription revision/replan rather than random corruption.
+
+The latest-snapshot prescription rule is therefore currently accepted for the isolated rebuild.
+
+---
+
+# 30. Attendance Date Defect Confirmed
+
+Issue 26 was found to affect RTDS Attendance as well as Prescription.
+
+The production Attendance loader used the same inferred `dayfirst=True` parsing approach.
+
+The national RTDS monthly CSV format is expected to use consistent ISO-formatted dates. The automated archived source files comply with this format; the corruption was introduced during local ETL parsing.
+
+## September 2026
+
+Source rows:
+
+**2,428**
+
+### Person birth date
+
+- populated: 2,428
+- old parser failures: 0
+- strict ISO failures: 0
+- differing interpretations: 0
+
+### Attendance datetime
+
+- populated: 2,428
+- old parser failures: **1,479**
+- old parser differs from ISO: **949**
+- strict ISO failures: **0**
+
+Therefore **2,428/2,428 attendance timestamps were either lost or required explicit interpretation**, with 2,304? [Do not use this derived wording without rechecking if needed]; the direct validated counts remain 1,479 failures and 949 differing interpretations.
+
+### Course-start datetime
+
+- populated: 2,411
+- old parser failures: 0
+- old parser differs from ISO: 0
+- strict ISO failures: 0
+
+---
+
+## October 2026
+
+Source rows:
+
+**2,618**
+
+### Person birth date
+
+- populated: 2,618
+- old parser failures: 0
+- strict ISO failures: 0
+- differing interpretations: 0
+
+### Attendance datetime
+
+- populated: 2,618
+- old parser failures: **1,471**
+- old parser differs from ISO: **1,023**
+- strict ISO failures: **0**
+
+### Course-start datetime
+
+- populated: 2,608
+- old parser failures: **1,582**
+- old parser differs from ISO: **979**
+- strict ISO failures: **0**
+
+---
+
+## November 2026
+
+Source rows:
+
+**2,688**
+
+### Person birth date
+
+- populated: 2,688
+- old parser failures: 0
+- strict ISO failures: 0
+- differing interpretations: 0
+
+### Attendance datetime
+
+- populated: 2,688
+- old parser failures: **1,697**
+- old parser differs from ISO: **947**
+- strict ISO failures: **0**
+
+### Course-start datetime
+
+- populated: 2,674
+- old parser failures: **1,562**
+- old parser differs from ISO: **1,022**
+- strict ISO failures: **0**
+
+The automated Attendance source files therefore contain valid ISO values. The errors were introduced by local ETL parsing.
+
+---
+
+# 31. Historical Attendance Source
+
+The historical Attendance source is:
+
+`C:\IDR\Archive\RTDS\RTDSUK_CSV1_Attendance.csv`
+
+Rows:
+
+**71,616**
+
+The historical file uses consistent UK formatting:
+
+- birth date: `DD/MM/YYYY`
+- attendance datetime: `DD/MM/YYYY HH:MM`
+- course-start datetime: `DD/MM/YYYY HH:MM`
+
+Unlike historical Prescription, **no Excel-serial-like values were found** in the Attendance date fields.
+
+Validation:
+
+| Field | Populated | Failed |
+|---|---:|---:|
+| Person birth date | 71,616 | 0 |
+| Attendance datetime | 71,616 | 0 |
+| Course-start datetime | 13,303 | 0 |
+
+A dedicated legacy Attendance rebuild parser was created using explicit UK formats only.
+
+---
+
+# 32. Attendance Raw Reconstruction
+
+An isolated raw Attendance table was created:
+
+`rtds_rebuild.attendance`
+
+Four source loads were reconstructed:
+
+| Rebuild Load | Source | Rows |
+|---:|---|---:|
+| 1 | Historical Attendance | 71,616 |
+| 2 | September 2026 | 2,428 |
+| 3 | October 2026 | 2,618 |
+| 4 | November 2026 | 2,688 |
+| **Total** | | **79,350** |
+
+This exactly matches the production `rtds_raw.attendance` population.
+
+## Production vs corrected Attendance
+
+| Measure | Production | Corrected Rebuild |
+|---|---:|---:|
+| Total rows | 79,350 | 79,350 |
+| Populated birth date | 79,350 | 79,350 |
+| Populated attendance datetime | 74,703 | **79,350** |
+| Populated course start | 17,852 | **20,996** |
+| Earliest attendance | 3 Jun 2024 07:58 | 3 Jun 2024 07:58 |
+| Latest attendance | 10 Dec 2026 18:32 | **31 Oct 2026 15:05** |
+| Earliest course start | 10 Jul 2025 12:00 | 10 Jul 2025 12:00 |
+| Latest course start | 10 Dec 2026 15:47 | **30 Oct 2026 17:55** |
+
+The Attendance reconstruction restored:
+
+- **4,647 attendance timestamps**
+- **3,144 course-start timestamps**
+
+It also removed parser-generated future-date extremes.
+
+---
+
+# 33. Patient-Linkage Lesson
+
+The national RTDS specification explicitly supports records where NHS number is unavailable through alternative linkage identifiers, including Local Patient Identifier.
+
+Issue 26 testing identified that the current PHU patient dimension is more restrictive than the RTDS source standard because it excludes Attendance records with NULL NHS number.
+
+The tested Trust-ID fallback successfully recovered valid Attendance-backed patients without introducing identifier collisions.
+
+This should be incorporated into the future production patient-dimension design rather than continuing to require NHS number universally.
+
+---
+
+# 34. Production Status at End of 24 November 2026
+
+**Production RTDS data has still not been replaced or rebuilt.**
+
+Production objects remain unchanged:
+
+- `rtds_raw.prescription`
+- `rtds_raw.attendance`
+- `rtds.dim_patient`
+- `rtds.fact_episode`
+- `rtds.fact_prescription`
+- `rtds.fact_attendance`
+- reporting marts
+
+All reconstructed data remains within:
+
+`rtds_rebuild`
+
+The existing RTDS warehouse architecture identifies Attendance and Prescription as the raw inputs feeding patient, episode, prescription and attendance core objects before reporting. This remains the architecture being followed by the controlled rebuild.
+
+---
+
+# 35. Git Status at End of 24 November 2026
+
+Working branch:
+
+`26-bug-rtds-dates`
+
+Significant commits created during the rebuild include:
+
+- `0ba520e` - prepare isolated legacy prescription rebuild
+- `e3c9708` - clarify legacy rebuild execution mode
+- `3e2648e` - add isolated monthly prescription rebuild
+- `69ae7c3` - configure October prescription rebuild
+- `1abc050` - configure November prescription rebuild
+- `19d3e89` - add Attendance date audit and legacy rebuild
+- `c9d5064` - add isolated monthly Attendance rebuild
+- `80f2675` - configure October Attendance rebuild
+- `e3e8422` - configure November Attendance rebuild
+
+At the last Git checkpoint:
+
+- working tree was clean;
+- branch was **6 commits ahead** of `origin/26-bug-rtds-dates`.
+
+**The latest six commits have not yet been pushed and should be pushed at the next safe checkpoint.**
+
+---
+
+# 36. Current Risk Position
+
+## Confirmed
+
+The original defect was not limited to one Prescription field.
+
+The same unsafe date-parsing approach affected multiple RTDS datasets and date fields.
+
+Confirmed consequences include:
+
+- loss of valid dates through `errors="coerce"`;
+- month/day transposition;
+- false future dates;
+- incorrect DTT;
+- incorrect referral dates;
+- incorrect planning dates;
+- incorrect exposure timestamps;
+- incorrect Attendance timestamps;
+- incorrect course-start timestamps;
+- downstream episode attribute selection based on corrupted source rows;
+- incorrect waiting-time reporting.
+
+## Not automatically considered defects
+
+The following should not be treated as generic ETL failures:
+
+- missing DTT;
+- DTT before referral;
+- isolated clinically unusual chronology;
+- corrected clinical values changing between snapshots;
+- prescription attributes changing between monthly snapshots.
+
+These require the relevant business rule and, where appropriate, human clinical validation.
+
+---
+
+# 37. Next Working Session
+
+## First action
+
+**PSQL Command Line**
+
+Inspect and rebuild `rtds.fact_attendance` against the corrected:
+
+`rtds_rebuild.attendance`
+
+The deployed production structure has already been inspected and contains:
+
+- `attendance_sk`
+- `patient_sk`
+- `radiotherapy_attendance_identifier`
+- `attendance_datetime`
+- `courseid`
+- `courseser`
+- `procedure_opcs`
+- `procedure_snomed`
+
+The next task is to establish the production `fact_attendance` grain, uniqueness constraints and patient-linkage rule before creating:
+
+`rtds_rebuild.fact_attendance`
+
+## After fact_attendance
+
+Proceed in this order:
+
+1. Validate rebuilt `fact_attendance`.
+2. Rebuild `rtds_rebuild.dim_patient` again from **corrected `rtds_rebuild.attendance`**, rather than the corrupted production raw Attendance table currently used during initial testing.
+3. Revalidate `fact_episode` and `fact_prescription` against the final corrected patient surrogate keys.
+4. Build corrected test reporting marts/views.
+5. Run aggregate old-vs-new reporting comparisons.
+6. Repeat key validated clinical/reporting checks, including H&N GIRFT.
+7. Update production Python loaders to explicit-format parsing.
+8. Add permanent ETL/data-quality controls.
+9. Take production backup/snapshot.
+10. Perform controlled production remediation.
+11. Rebuild production core facts and marts.
+12. Run final acceptance checks.
+13. Document acceptance and close Issue 26.
+14. Merge the bug-fix branch only after production acceptance.
+
+---
+
+# 38. Permanent Controls Required
+
+Issue 26 should result in permanent auditable ETL controls.
+
+Recommended controls:
+
+| Control | Required behaviour |
+|---|---|
+| Populated date fails defined format | **Fail load** |
+| Unexpected CSV schema | **Fail load** |
+| Unexpected source-file format | **Fail load** |
+| Source row count | Log and reconcile |
+| Missing-date rate changes materially | Alert |
+| Future dates inconsistent with reporting period | Alert / investigate |
+| Exposure before DTT | Log for review, not automatic failure |
+| Exposure before ECAD | Log for review |
+| Attendance timestamp after expected reporting window | Alert |
+| Source file/load provenance | Retain |
+| QC/test `Z%` identifiers | Explicitly classify/exclude according to PHU rule |
+| Patient records without NHS number | Support validated alternative identifier |
+| Multiple values across snapshots | Use source-version rule, not arbitrary MIN/MAX |
+
+Operational controls should be implemented as **auditable controls**, not ordinary recurring tasks.
