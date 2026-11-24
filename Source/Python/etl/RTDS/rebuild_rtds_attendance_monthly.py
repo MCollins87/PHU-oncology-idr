@@ -502,11 +502,11 @@ def validate_rebuild_target(rebuild_load_id):
                 f"{rebuild_load_id}: {current_load_rows:,}"
             )
 
-            if total_rows != 71616:
+            if total_rows != 74044:
                 raise RuntimeError(
                     "Safety check failed: unexpected existing "
                     "Attendance rebuild row count. "
-                    f"Expected 71,616 before September load, "
+                    f"Expected 74,044 before October load, "
                     f"found {total_rows:,}."
                 )
 
@@ -531,11 +531,11 @@ if __name__ == "__main__":
     print("Target: rtds_rebuild.attendance")
 
     source_file = (
-        r"C:\IDR\Archive\RTDS\2026-09"
+        r"C:\IDR\Archive\RTDS\2026-10"
         r"\RTDS UK - CSV1 Attendance.csv"
     )
 
-    rebuild_load_id = 2
+    rebuild_load_id = 3
 
     print(f"Source file: {source_file}")
     print(f"Rebuild load ID reserved: {rebuild_load_id}")
@@ -543,7 +543,7 @@ if __name__ == "__main__":
     validate_rebuild_target(rebuild_load_id)
 
     print("")
-    print("Reading September RTDS Attendance source...")
+    print("Reading October RTDS Attendance source...")
 
     df = pd.read_csv(
         source_file,
@@ -559,7 +559,7 @@ if __name__ == "__main__":
 
     df = convert_dates(df)
 
-    expected_rows = 2428
+    expected_rows = 2618
     actual_rows = len(df)
 
     print("")
@@ -569,7 +569,7 @@ if __name__ == "__main__":
 
     if actual_rows != expected_rows:
         raise RuntimeError(
-            "Safety check failed: unexpected September "
+            "Safety check failed: unexpected October "
             "Attendance row count. "
             f"Expected {expected_rows:,}, "
             f"found {actual_rows:,}."
@@ -578,11 +578,11 @@ if __name__ == "__main__":
     print("Pre-load row-count validation PASSED")
 
     print("")
-    print("SEPTEMBER ATTENDANCE SOURCE VALIDATION PASSED")
+    print("OCTOBER ATTENDANCE SOURCE VALIDATION PASSED")
     print("Source validation complete; rebuild load not yet started.")
 
     print("")
-    print("All September Attendance pre-load checks PASSED.")
+    print("All October Attendance pre-load checks PASSED.")
     print("Preparing isolated Attendance rebuild load...")
 
     rows_loaded = load_to_staging(
@@ -592,7 +592,7 @@ if __name__ == "__main__":
     )
 
     print("")
-    print("SEPTEMBER ATTENDANCE REBUILD LOAD COMPLETED")
+    print("OCTOBER ATTENDANCE REBUILD LOAD COMPLETED")
     print(f"Rows loaded: {rows_loaded:,}")
     print(f"Rebuild load ID: {rebuild_load_id}")
     print("Target: rtds_rebuild.attendance")
