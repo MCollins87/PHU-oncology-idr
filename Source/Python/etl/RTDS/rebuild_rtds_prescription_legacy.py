@@ -600,8 +600,8 @@ def validate_rebuild_target():
 # ----------------------------------------
 
 if __name__ == "__main__":
-    print("LEGACY RTDS REBUILD - SAFE MODE")
-    print("No database changes will be made.")
+    print("LEGACY RTDS PRESCRIPTION REBUILD")
+    print("Target: rtds_rebuild.prescription")
 
     legacy_file = (
         r"C:\IDR\Archive\RTDS\RTDSUK_CSV2_Prescription.csv"
