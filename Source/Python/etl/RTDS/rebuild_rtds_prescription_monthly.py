@@ -521,8 +521,8 @@ def validate_rebuild_target(rebuild_load_id):
 # ----------------------------------------
 
 if __name__ == "__main__":
-    print("MONTHLY RTDS PRESCRIPTION REBUILD - SAFE MODE")
-    print("No database changes will be made.")
+    print("MONTHLY RTDS PRESCRIPTION REBUILD")
+    print("Target: rtds_rebuild.prescription")
 
     source_file = (
         r"C:\IDR\Archive\RTDS\2026-09"
