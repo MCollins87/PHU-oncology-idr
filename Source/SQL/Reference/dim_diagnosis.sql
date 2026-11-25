@@ -160,6 +160,12 @@ VALUES
 -- Other and ill-defined primary site
 ('C76','C76','Cancer of Unknown Primary','CUP','Other'),
 
+-- Keyloid
+('L91.0', 'L91.0', 'Keyloid', 'Benign Conditions', 'Other'),
+
+-- Heterotopic Ossification
+('M61.9', 'M61.9', 'Heterotopic Ossification', 'Benign Conditions', 'Other'),
+
 -- Amyloidosis
 ('E85','E85','Non-Malignant','Non-Malignant','Other')
 
