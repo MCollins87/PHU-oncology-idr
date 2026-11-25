@@ -1949,3 +1949,595 @@ The `M61.9` mapping was manually validated against the clinical referral record.
 ### Source-version principle
 
 Where RTDS episode or prescription attributes change across monthly snapshots, the warehouse should use an explicit source-version rule rather than arbitrary `MIN()` or `MAX()` aggregation.
+
+---
+---
+# 25 November 2026 Production Remediation Update
+
+## 51. Final Patient Identity Correction
+
+The isolated rebuild was repeated from corrected Attendance data before production remediation.
+
+During final validation, an additional patient-identity defect was identified.
+
+One Trust Internal System Patient ID initially appeared twice in `rtds_rebuild.dim_patient`.
+
+Investigation demonstrated that the underlying NHS number was identical but stored in two different formats:
+
+- unspaced 10-digit NHS number;
+- the same NHS number containing internal spaces.
+
+`TRIM()` removed leading and trailing whitespace but did not remove internal whitespace.
+
+A full corrected Attendance assessment found:
+
+- 282 Attendance rows containing whitespace within NHS number;
+- 32 distinct formatted NHS-number values changed by whitespace normalisation;
+- 6,705 distinct normalised NHS numbers;
+- 1 logical NHS number represented by more than one formatting variant;
+- maximum formatting variants for one normalised NHS number: 2.
+
+The patient identity rule was therefore amended to remove all NHS-number whitespace before matching:
+
+`regexp_replace(TRIM(nhs_number), '\s+', '', 'g')`
+
+Following this correction, the final rebuilt patient population became:
+
+- total patients: **6,713**
+- NHS-number keyed patients: **6,705**
+- Trust-ID fallback patients: **8**
+- NHS numbers still containing whitespace: **0**
+- duplicate NHS numbers: **0**
+- duplicate Trust IDs: **0**
+- QC/test `Z%` patients: **0**
+- missing Trust ID: **0**
+- missing DOB: **0**
+- missing postcode: **5**
+
+The separate pre-ETL RTDS Data Quality workflow has been recorded as **Issue 27** and remains outside the scope of Issue 26.
+
+Issue 26 includes only safeguards within the operational ETL itself.
+
+---
+
+## 52. Final Isolated Core Rebuild
+
+Because `patient_sk` is a surrogate key referenced by multiple facts, the isolated facts were removed and recreated after finalising the corrected patient identity rule.
+
+Final accepted rebuild populations:
+
+| Object | Final rows |
+|---|---:|
+| `rtds_rebuild.dim_patient` | **6,713** |
+| `rtds_rebuild.fact_episode` | **7,222** |
+| `rtds_rebuild.fact_prescription` | **8,465** |
+| `rtds_rebuild.fact_attendance` | **79,329** |
+
+### Episode acceptance
+
+- 7,222 unique episode identifiers;
+- 6,707 distinct patients represented;
+- 0 missing patient keys;
+- 0 invalid patient relationships;
+- 218 missing DTT;
+- 0 missing ECAD;
+- 9 missing ICD;
+- 7,213 classified episodes;
+- 6 correctly classified Keloid episodes;
+- 1 correctly classified Heterotopic Ossification episode.
+
+### Prescription acceptance
+
+- 8,465 unique prescription identifiers;
+- all 7,222 accepted episodes represented;
+- 0 missing episode keys;
+- 0 orphaned episode relationships;
+- 627 missing planning dates;
+- 0 missing prescribed dose;
+- 0 missing prescribed fractions;
+- 0 missing actual dose;
+- planning-date range 15 April 2024 to 3 November 2026.
+
+### Attendance acceptance
+
+- 79,329 unique Attendance identifiers;
+- 6,713 distinct patients;
+- 0 missing patient keys;
+- 0 missing Attendance datetime;
+- 0 invalid patient relationships;
+- corrected Attendance range 3 June 2024 to 31 October 2026.
+
+The final cross-core acceptance snapshot showed:
+
+| Measure | Result |
+|---|---:|
+| Patients | **6,713** |
+| Episodes | **7,222** |
+| Prescriptions | **8,465** |
+| Attendances | **79,329** |
+| Episodes with DTT | **7,004** |
+| Episodes with ECAD | **7,222** |
+| Episodes with referral | **6,979** |
+| Prescriptions with planning date | **7,838** |
+| Attendances with datetime | **79,329** |
+| Orphan episodes | **0** |
+| Orphan prescriptions | **0** |
+| Orphan attendances | **0** |
+
+---
+
+## 53. Final Rebuild GIRFT Acceptance
+
+The clinically validated Head & Neck Radical GIRFT cohort was recalculated against the final rebuild after NHS-number normalisation and complete fact recreation.
+
+Cohort:
+
+**110 Radical Head & Neck starts between 1 November 2025 and 31 October 2026**
+
+Results:
+
+| Measure | Final rebuild result |
+|---|---:|
+| DTT complete | 110/110 |
+| ECAD complete | 110/110 |
+| Treatment date complete | 110/110 |
+| Negative DTT waits | 0 |
+| Negative ECAD waits | 0 |
+| DTT ≤17 days | **0/110, 0.0%** |
+| DTT ≤31 days | **58/110, 52.7%** |
+| ECAD ≤17 days | **16/110, 14.5%** |
+| ECAD ≤31 days | **107/110, 97.3%** |
+
+The patient-identity correction did not change the previously validated clinical benchmark.
+
+---
+
+## 54. Version-Controlled Source Remediation
+
+The validated rebuild rules were incorporated into the production source definitions.
+
+Commit:
+
+`1aaa8da - fix(rtds): correct date parsing and core refresh logic`
+
+The commit modified ten files:
+
+### Python
+
+- `Source/Python/etl/RTDS/load_rtds_attendance.py`
+- `Source/Python/etl/RTDS/load_rtds_prescription.py`
+- `Source/Python/etl/RTDS/refresh_rtds_facts.py`
+- `Source/Python/run_act_pipeline.py`
+
+### SQL
+
+- `Source/SQL/RTDS/Dimensions/dim_patient.sql`
+- `Source/SQL/RTDS/Facts/fact_attendance.sql`
+- `Source/SQL/RTDS/Facts/fact_episode.sql`
+- `Source/SQL/RTDS/Facts/fact_prescription.sql`
+- `Source/SQL/RTDS/Intermediate/int_episode_treatment_start.sql`
+- `Source/SQL/Reference/dim_diagnosis.sql`
+
+The committed changes include:
+
+- explicit ISO parsing for monthly RTDS Attendance;
+- validation that required date columns are present;
+- populated malformed dates cause ETL failure rather than silent NULL conversion;
+- explicit error rollback and propagation in SQL orchestration;
+- NHS-number whitespace normalisation;
+- Trust Internal System Patient ID fallback where NHS number is absent;
+- explicit exclusion of PHU `Z%` QC/test activity;
+- latest corrected Attendance demographic selection;
+- authoritative latest source-snapshot rule for episodes;
+- authoritative latest source-snapshot rule for prescriptions;
+- fact updates rather than stale `DO NOTHING` behaviour;
+- exact diagnosis mapping before ICD-range mapping;
+- reproducible Keloid and Heterotopic Ossification reference mappings;
+- corrected `int_episode_treatment_start` view name.
+
+The business rule for first treatment was retained:
+
+> First treatment is the earliest `time_and_date_of_exposure` for the RTDS episode.
+
+---
+
+## 55. Production Loader Safeguard Testing
+
+The modified production parsers were tested independently without running the ETL.
+
+### Attendance
+
+Known-good November 2026 source:
+
+- rows validated: **2,688**
+- Attendance datetimes populated: **2,688**
+- course-start datetimes populated: **2,674**
+- parser validation passed.
+
+Negative tests:
+
+- UK-formatted populated Attendance timestamp was rejected;
+- missing required `date_and_time_of_course_start` column was rejected.
+
+### Prescription
+
+Known-good November 2026 source:
+
+- rows validated: **12,798**
+- DTT populated: 12,564
+- ECAD populated: 12,798
+- referral dates populated: 12,543
+- planning dates populated: 12,346
+- exposure datetimes populated: 12,798
+- parser validation passed.
+
+Negative tests:
+
+- non-ISO populated DTT date was rejected;
+- missing required `referral_date` column was rejected.
+
+Repository search confirmed no operational RTDS loader retains `dayfirst=True`.
+
+Remaining `dayfirst=True` references are either forensic audit scripts or non-RTDS Warehouse loaders and were not changed under Issue 26.
+
+---
+
+## 56. Production Rollback Snapshot
+
+Before production remediation, a database-local rollback snapshot was created:
+
+`rtds_snapshot_issue26_20261125`
+
+Snapshot size:
+
+**99 MB**
+
+Snapshot row counts:
+
+| Snapshot object | Rows |
+|---|---:|
+| `raw_prescription` | **196,486** |
+| `raw_attendance` | **79,350** |
+| `dim_patient` | **6,706** |
+| `fact_episode` | **7,209** |
+| `fact_prescription` | **8,452** |
+| `fact_attendance` | **79,289** |
+
+All snapshot row counts were reconciled against the pre-remediation production state before any production data was modified.
+
+The snapshot contains rollback data copies rather than independent operational table structures.
+
+---
+
+## 57. Production Raw Remediation
+
+Production raw Prescription and Attendance were replaced independently from the validated corrected rebuild tables.
+
+Each replacement was performed inside an explicit PostgreSQL transaction and validated before commit.
+
+### Prescription
+
+Final production state:
+
+- rows: **196,486**
+- missing exposure timestamps: **0**
+- exposure range: 3 June 2024 07:30 to 31 October 2026 15:27:41
+- populated DTT: **189,917**
+- populated referral date: **189,489**
+- populated planning date: **181,794**
+
+### Attendance
+
+Final production state:
+
+- rows: **79,350**
+- missing birth date: **0**
+- missing Attendance datetime: **0**
+- missing course start: **58,354**
+- Attendance range: 3 June 2024 07:58 to 31 October 2026 15:05:31
+- course-start range: 10 July 2025 12:00:58 to 30 October 2026 17:55:33
+
+The corrected raw tables retain exactly the same source-row populations as production before remediation while repairing the date content.
+
+---
+
+## 58. Production Patient Identity Remediation
+
+The first identified production duplicate NHS identity had:
+
+- canonical whitespace-free patient surrogate: `patient_sk 45029`
+- whitespace-formatted surrogate to retire: `patient_sk 2342`
+
+The retiring row owned:
+
+- 1 episode fact;
+- 30 Attendance facts.
+
+Those foreign-key relationships were repointed to the canonical patient inside a transaction and validated before deletion.
+
+Following execution of the corrected `dim_patient.sql`, a wider legacy-format issue became visible:
+
+- 31 whitespace-formatted patient rows remained;
+- all 31 had canonical whitespace-free counterparts;
+- mapping was one-to-one;
+- 34 episode facts referenced the legacy rows;
+- 252 Attendance facts referenced the legacy rows.
+
+A second transactional migration therefore:
+
+1. materialised the verified 31-row legacy-to-canonical patient mapping;
+2. repointed the 34 episode facts;
+3. repointed the 252 Attendance facts;
+4. verified zero remaining references;
+5. deleted the 31 obsolete patient rows;
+6. validated patient identity and referential integrity before commit.
+
+Final production patient dimension:
+
+- patients: **6,713**
+- NHS-number patients: **6,705**
+- Trust-ID fallback patients: **8**
+- NHS numbers containing whitespace: **0**
+- duplicate NHS numbers: **0**
+- duplicate Trust IDs: **0**
+- orphan episode facts: **0**
+- orphan Attendance facts: **0**
+
+---
+
+## 59. Production Core Remediation
+
+The corrected source SQL files were then executed individually against production in dependency order.
+
+### Episode fact
+
+Final accepted production results:
+
+- episode rows: **7,222**
+- unique episode identifiers: **7,222**
+- distinct patients: **6,707**
+- missing patient SK: 0
+- missing DTT: 218
+- missing ECAD: 0
+- missing referral: 243
+- missing ICD: 9
+- classified episodes: 7,213
+- Keloid classifications: 6
+- Heterotopic Ossification classifications: 1
+- latest DTT: 30 October 2026
+- latest ECAD: 30 October 2026
+- invalid patient relationships: 0.
+
+### Prescription fact
+
+Final accepted production results:
+
+- prescription rows: **8,465**
+- unique prescription identifiers: **8,465**
+- all 7,222 accepted episodes represented;
+- missing episode SK: 0
+- orphaned episode relationships: 0
+- missing planning date: 627
+- missing prescribed dose: 0
+- missing prescribed fractions: 0
+- missing actual dose: 0
+- planning range: 15 April 2024 to 3 November 2026.
+
+### Attendance fact
+
+Final accepted production results:
+
+- Attendance rows: **79,329**
+- unique Attendance identifiers: **79,329**
+- distinct patients: **6,713**
+- missing patient SK: 0
+- missing Attendance datetime: 0
+- invalid patient relationships: 0
+- Attendance range: 3 June 2024 07:58 to 31 October 2026 15:05:31.
+
+---
+
+## 60. Production Core vs Accepted Rebuild
+
+Final production and rebuild populations were compared directly.
+
+| Measure | Production | Rebuild |
+|---|---:|---:|
+| Patients | **6,713** | **6,713** |
+| Episodes | **7,222** | **7,222** |
+| Prescriptions | **8,465** | **8,465** |
+| Attendances | **79,329** | **79,329** |
+| Episodes with DTT | **7,004** | **7,004** |
+| Prescriptions with planning date | **7,838** | **7,838** |
+| Attendances with datetime | **79,329** | **79,329** |
+
+Production therefore matches the accepted isolated rebuild on all tested core population and completeness measures.
+
+---
+
+## 61. Treatment-Start View and Mart Remediation
+
+The correctly named view was redeployed:
+
+`rtds.int_episode_treatment_start`
+
+Validation:
+
+- rows: **7,259**
+- unique episode identifiers: **7,259**
+- missing treatment datetime: 0
+- missing treatment date: 0
+- rows without raw match: 0
+- datetime mismatches against independent raw `MIN(exposure)`: 0
+- date mismatches: 0
+- treatment range: 3 June 2024 to 31 October 2026.
+
+The obsolete misspelled database view:
+
+`rtds.int_episode_treatmen_start`
+
+was left in place because dependency checking showed the relevant marts use only the correctly named object.
+
+All five mart source files were confirmed to exist before the controlled refresh.
+
+No additional downstream PostgreSQL view dependencies were found outside the five known mart views.
+
+The mart refresh completed successfully.
+
+Post-refresh row counts:
+
+| Mart view | Rows |
+|---|---:|
+| `mart.vw_episode_summary` | **8,465** |
+| `mart.vw_oncology_patient_starts` | **14,098** |
+| `mart.vw_patient_geography` | **6,713** |
+| `mart.vw_rt_patient_starts` | **6,707** |
+| `mart.vw_sact_patient_starts` | **7,391** |
+
+---
+
+## 62. Final Production GIRFT Acceptance
+
+The Head & Neck Radical GIRFT benchmark was rerun through the **production reporting route** after raw, core, intermediate and mart remediation.
+
+Results:
+
+| Measure | Production result |
+|---|---:|
+| Total H&N Radical starts | **110** |
+| DTT complete | **110** |
+| ECAD complete | **110** |
+| Treatment date complete | **110** |
+| Negative DTT waits | **0** |
+| Negative ECAD waits | **0** |
+| DTT ≤17 days | **0 / 110, 0.0%** |
+| DTT ≤31 days | **58 / 110, 52.7%** |
+| ECAD ≤17 days | **16 / 110, 14.5%** |
+| ECAD ≤31 days | **107 / 110, 97.3%** |
+
+This exactly reproduces the clinically validated isolated-rebuild benchmark.
+
+---
+
+## 63. Final Production Date-Integrity Validation
+
+Post-remediation production raw data showed:
+
+### Prescription
+
+- rows: 196,486
+- missing exposure timestamp: **0**
+- exposure after 31 October 2026: **0**
+- DTT after 31 October 2026: **0**
+- exposure before DTT: **28**
+- exposure before ECAD: **300**
+
+The 28 exposure-before-DTT rows match the bounded corrected baseline previously investigated.
+
+### Attendance
+
+- rows: 79,350
+- missing Attendance datetime: **0**
+- Attendance after 31 October 2026: **0**
+- course start after 31 October 2026: **0**
+
+### ECAD beyond reporting window
+
+182 Prescription raw rows had ECAD after 31 October 2026.
+
+Further analysis showed:
+
+- all 182 rows belong to **one episode**;
+- all contain the same ECAD: **1 November 2026**;
+- all 182 exposures precede that ECAD;
+- there is no spread into later November, December or 2027.
+
+This therefore represents one episode-level future ECAD repeated across exposure-level raw rows, rather than evidence of continuing parser corruption.
+
+No further remediation was applied.
+
+---
+
+## 64. Production Remediation Status at End of 25 November 2026
+
+Issue 26 production remediation is now technically accepted.
+
+Completed:
+
+- corrected source SQL committed and pushed;
+- corrected Python ETL safeguards committed and pushed;
+- rollback snapshot created and validated;
+- production raw Prescription corrected;
+- production raw Attendance corrected;
+- production patient identity corrected;
+- production episode fact corrected;
+- production prescription fact corrected;
+- production Attendance fact corrected;
+- treatment-start view redeployed;
+- marts refreshed;
+- production core matches validated rebuild;
+- H&N GIRFT benchmark reproduced through production;
+- original parser-generated future dates removed;
+- orphan relationships = 0.
+
+Working branch:
+
+`26-bug-rtds-dates`
+
+Source fix commit:
+
+`1aaa8da - fix(rtds): correct date parsing and core refresh logic`
+
+At the last Git check:
+
+- local branch was up to date with `origin/26-bug-rtds-dates`;
+- working tree was clean before this documentation update.
+
+---
+
+## 65. Remaining Work Before Issue 26 Closure
+
+The following work remains:
+
+1. Commit and push this investigation-document update.
+2. Retain `rtds_snapshot_issue26_20261125` as the rollback point for an agreed period.
+3. Retain `rtds_rebuild` temporarily as the accepted comparison baseline.
+4. Run the next normal monthly ACT ETL using the corrected production loaders and orchestration.
+5. Confirm:
+   - strict parser safeguards succeed on the new monthly source;
+   - corrected core populations remain valid;
+   - mart refresh completes;
+   - QC summary completes;
+   - input files archive only after successful processing.
+6. Review logs from that normal operational run.
+7. Update final controlled RTDS warehouse/runbook documentation.
+8. Only after successful operational validation, merge:
+
+`26-bug-rtds-dates` → `main`
+
+9. Remove the obsolete misspelled view `rtds.int_episode_treatmen_start` later as controlled technical debt if appropriate.
+10. Decide when the rebuild and snapshot schemas can be safely retired.
+
+---
+
+## 66. Issue 27 Boundary
+
+A separate enhancement has been created:
+
+**Issue 27 – RTDS pre-ETL Data Quality workflow**
+
+That enhancement is deliberately outside Issue 26.
+
+The intended future pattern is:
+
+**Run RTDS DQ checks → investigate/remediate issues → repeat DQ as required → run safeguarded ETL**
+
+Issue 26 has implemented the safeguards required **inside the ETL**, including:
+
+- explicit ISO date formats;
+- required date-column checks;
+- populated invalid dates cause hard failure;
+- SQL execution rollback and exception propagation;
+- downstream pipeline stages stop when an upstream loader fails.
+
+Issue 27 will address the separate proactive quality gate before those safeguarded ETL processes are invoked.
