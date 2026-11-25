@@ -699,7 +699,7 @@ Do not alter production RTDS tables.
 Proceed one step at a time and validate each stage before continuing.
 
 ---
-
+---
 
 # 24 November 2026 Progress Update
 
@@ -1521,3 +1521,431 @@ Recommended controls:
 | Multiple values across snapshots | Use source-version rule, not arbitrary MIN/MAX |
 
 Operational controls should be implemented as **auditable controls**, not ordinary recurring tasks.
+
+
+---
+# 24 November 2026 Evening Validation Update
+
+## 39. Corrected Attendance Fact
+
+Following completion and reconciliation of the corrected raw Attendance reconstruction, the deployed production `rtds.fact_attendance` structure and grain were validated.
+
+Production `rtds.fact_attendance` contains:
+
+- 79,289 rows
+- 79,289 distinct `radiotherapy_attendance_identifier` values
+- 0 missing attendance identifiers
+- 0 duplicate attendance identifiers
+- 0 invalid patient links
+
+The table is constrained by:
+
+- primary key on `attendance_sk`
+- unique constraint on `radiotherapy_attendance_identifier`
+- mandatory `patient_sk`
+- foreign key from `patient_sk` to `rtds.dim_patient`
+
+The intended fact grain is therefore confirmed as:
+
+> **One fact row per RTDS radiotherapy attendance identifier.**
+
+---
+
+## 40. Corrected Attendance Fact Candidate
+
+The corrected raw Attendance population in `rtds_rebuild.attendance` was evaluated against the rebuilt patient dimension.
+
+Candidate business rules:
+
+1. Exclude PHU QC/test patients where `local_patient_identifier` begins with `Z`.
+2. Use NHS number for patient linkage where available.
+3. Where NHS number is absent, use the validated Trust Internal System Patient ID fallback.
+4. Require a valid `rtds_rebuild.dim_patient` record.
+5. Preserve one row per `radiotherapy_attendance_identifier`.
+
+Validation produced:
+
+- candidate attendance identifiers: **79,329**
+- identifiers repeated across corrected raw: **0**
+- identifiers occurring across multiple rebuild loads: **0**
+- identifiers without patient match: **0**
+- identifiers associated with multiple patient keys: **0**
+- maximum patient keys per attendance identifier: **1**
+
+The corrected candidate is therefore structurally one row per attendance identifier with deterministic patient linkage.
+
+---
+
+## 41. Production vs Corrected Attendance Membership
+
+Attendance identifier membership was compared between production and the corrected candidate.
+
+Results:
+
+| Membership | Attendance identifiers |
+|---|---:|
+| Present in production and rebuild | 79,289 |
+| Production only | **0** |
+| Rebuild only | **40** |
+| Total corrected candidate | **79,329** |
+
+The corrected Attendance fact is therefore a **strict superset of production**.
+
+No existing production Attendance fact is lost.
+
+### Cause of the 40 recovered Attendance facts
+
+All 40 recovered facts:
+
+- exist in production `rtds_raw.attendance`;
+- have valid Attendance timestamps in production raw;
+- have valid Attendance timestamps in corrected raw;
+- have no NHS number in the Attendance source record;
+- map successfully using Trust Internal System Patient ID.
+
+Breakdown by corrected rebuild load:
+
+| Rebuild load | Recovered attendances |
+|---:|---:|
+| Historical | 38 |
+| September | 1 |
+| October | 1 |
+| November | 0 |
+| **Total** | **40** |
+
+The 40 recovered Attendance facts are therefore attributable to the previous NHS-number-centric patient dimension rather than the date-parsing defect.
+
+This is consistent with the patient-dimension investigation, which demonstrated that legitimate Attendance-backed patients without NHS numbers were excluded by the existing production patient-key strategy.
+
+---
+
+## 42. `rtds_rebuild.fact_attendance`
+
+An isolated corrected fact was created:
+
+`rtds_rebuild.fact_attendance`
+
+Structure:
+
+- independent `attendance_sk`
+- mandatory `patient_sk`
+- unique `radiotherapy_attendance_identifier`
+- corrected `attendance_datetime`
+- `courseid`
+- `courseser`
+- OPCS procedure
+- SNOMED procedure
+- foreign key to `rtds_rebuild.dim_patient`
+
+Rows inserted:
+
+**79,329**
+
+Acceptance validation:
+
+| Check | Result |
+|---|---:|
+| Fact rows | **79,329** |
+| Distinct attendance identifiers | **79,329** |
+| Missing attendance identifier | **0** |
+| Missing patient SK | **0** |
+| Distinct patients | **6,714** |
+| Missing Attendance datetime | **0** |
+| Invalid patient links | **0** |
+| Missing course ID | 58,333 |
+| Missing course serial | 58,333 |
+| Missing OPCS | 2,974 |
+| Missing SNOMED | 79,329 |
+| Earliest Attendance | 3 Jun 2024 07:58 |
+| Latest Attendance | 31 Oct 2026 15:05 |
+
+The missing course and procedure values are retained as source completeness characteristics and have not been classified as ETL failures.
+
+---
+
+## 43. Attendance Fact Attribute Comparison
+
+The **79,289 Attendance facts common to production and corrected rebuild** were compared attribute-by-attribute.
+
+Results:
+
+| Attribute | Facts changed |
+|---|---:|
+| Attendance datetime | **7,543** |
+| Course ID | 0 |
+| Course serial | 0 |
+| OPCS procedure | 0 |
+| SNOMED procedure | 0 |
+
+This demonstrates that the material fact-level difference is isolated to the Attendance timestamp.
+
+No differences were found in the other retained Attendance fact attributes.
+
+---
+
+## 44. Attendance Timestamp Impact
+
+Of the **7,543 corrected Attendance timestamps**:
+
+- **4,634** were `NULL` in production and populated in the corrected rebuild;
+- **2,909** were populated in both but contained different timestamps;
+- **0** populated production timestamps became NULL in the rebuild.
+
+Among records populated in both datasets:
+
+- corrected timestamp earlier than production: **706**
+- corrected timestamp later than production: **2,203**
+- minimum date displacement: **-118 days**
+- maximum date displacement: **+264 days**
+
+This matches the two failure modes demonstrated during the Python forensic audit:
+
+1. valid ISO datetime converted to `NaT` through `errors="coerce"`;
+2. valid ISO datetime interpreted using day/month transposition.
+
+---
+
+## 45. Attendance Corrections by Source Load
+
+All **7,543 Attendance fact timestamp corrections** originate in the automated monthly ISO extracts.
+
+| Rebuild load | Period | Changed | Production NULL → restored | Populated but incorrect |
+|---:|---|---:|---:|---:|
+| 2 | September | **2,420** | 1,475 | 945 |
+| 3 | October | **2,488** | 1,468 | 1,020 |
+| 4 | November | **2,635** | 1,691 | 944 |
+| **Total** | | **7,543** | **4,634** | **2,909** |
+
+Historical rebuild load 1 contributes:
+
+**0 changed Attendance fact timestamps**
+
+This independently confirms that:
+
+- the historical UK-format Attendance parsing was sound;
+- the defect begins with the automated ISO monthly extracts;
+- the archived monthly source data itself is valid;
+- corruption occurred during local ETL parsing.
+
+The corrected monthly Attendance facts reproduce the archived ISO source rather than the defective production interpretations.
+
+---
+
+## 46. Impact on Patient Demographic Snapshot Selection
+
+The initial `rtds_rebuild.dim_patient` was created from production `rtds_raw.attendance` before the full corrected Attendance reconstruction was completed.
+
+Because the patient-dimension build selects the latest Attendance record, corrupted Attendance timestamps could cause the wrong demographic record to be selected as the current patient snapshot.
+
+A read-only candidate rebuild was therefore calculated from fully corrected `rtds_rebuild.attendance`.
+
+Corrected patient population:
+
+**6,714**
+
+All 6,714 patients are already represented in the current rebuild dimension.
+
+Comparison of current rebuilt demographic values against a corrected latest-Attendance selection showed:
+
+| Attribute | Patients changed |
+|---|---:|
+| Local patient identifier | 0 |
+| Trust internal patient identifier | 0 |
+| Date of birth | 0 |
+| Family name | **2** |
+| Given name | **2** |
+| Postcode | **4** |
+| Gender | 0 |
+| GP practice | 0 |
+
+This demonstrates a small but real downstream demographic consequence of the timestamp defect.
+
+The final production patient dimension must therefore be rebuilt from the **corrected Attendance source**, not from the currently corrupted production `rtds_raw.attendance`.
+
+This is particularly important for postcode-based geography reporting.
+
+---
+
+## 47. End-of-Evening Validation Position
+
+PSQL validation has now reached the point where the next meaningful work requires updating the controlled SQL/Python source definitions.
+
+No production tables or source SQL files were modified during the evening session.
+
+Validated isolated objects now include:
+
+- `rtds_rebuild.prescription`
+- `rtds_rebuild.attendance`
+- `rtds_rebuild.dim_patient`
+- `rtds_rebuild.fact_episode`
+- `rtds_rebuild.fact_prescription`
+- `rtds_rebuild.fact_attendance`
+
+### Current validated populations
+
+| Object | Rows |
+|---|---:|
+| Corrected raw Prescription | **196,486** |
+| Corrected raw Attendance | **79,350** |
+| Rebuilt patient dimension | **6,714** |
+| Rebuilt episode fact | **7,222** |
+| Rebuilt prescription fact | **8,465** |
+| Rebuilt Attendance fact | **79,329** |
+
+Both corrected raw populations exactly reproduce their respective production source-row counts while repairing the date-parsing defect.
+
+---
+
+## 48. Confirmed Production Impact
+
+Issue 26 is now confirmed to affect more than individual date columns.
+
+The defect propagated through:
+
+### Raw Prescription
+
+- DTT
+- referral date
+- planning date
+- exposure date/time
+- ECAD in a small number of cases
+
+### Raw Attendance
+
+- Attendance date/time
+- course-start date/time
+
+### Core facts
+
+- episode DTT and referral attributes
+- episode inclusion through patient linkage
+- prescription planning and accumulated treatment attributes
+- Attendance timestamp
+- Attendance inclusion through patient linkage
+
+### Patient dimension
+
+- exclusion of legitimate patients without NHS number
+- selection of the wrong latest demographic snapshot for a small number of patients because Attendance timestamps were corrupted
+
+### Reporting
+
+Demonstrated reporting consequences include:
+
+- false negative DTT-to-treatment intervals;
+- artificial future activity;
+- incorrect waiting-time distributions;
+- incomplete episode/prescription/Attendance populations;
+- potential postcode/geography misclassification for a small number of patients.
+
+---
+
+## 49. Next Technical Phase
+
+The exploratory/rebuild-schema validation phase is now substantially complete.
+
+The next phase should be **controlled source-code remediation**, not further exploratory SQL.
+
+Recommended sequence:
+
+1. Rebuild `dim_patient.sql` so that:
+   - QC/test `Z%` records are explicitly excluded;
+   - NHS number remains the primary natural identifier where available;
+   - Trust Internal System Patient ID is the validated fallback where NHS number is absent;
+   - latest demographics are selected using corrected Attendance timestamps.
+
+2. Revise `fact_episode.sql` to:
+   - use the latest authoritative RTDS source snapshot;
+   - use a deterministic within-snapshot record-selection rule;
+   - permit missing DTT;
+   - use exact special diagnosis mappings before standard ICD range mapping;
+   - preserve the validated Heterotopic Ossification and Keloid classifications.
+
+3. Revise `fact_prescription.sql` to:
+   - use the latest source snapshot for each prescription;
+   - use latest exposure within that snapshot as the deterministic tie-break;
+   - link to the corrected episode fact.
+
+4. Revise `fact_attendance.sql` to:
+   - use corrected Attendance timestamps;
+   - use the validated patient-key fallback;
+   - exclude QC/test activity explicitly;
+   - preserve one fact per RTDS Attendance identifier.
+
+5. Update production Python loaders:
+   - automated monthly Prescription: explicit ISO formats;
+   - automated monthly Attendance: explicit ISO formats;
+   - fail on populated values that do not conform;
+   - no inferred `dayfirst=True` parsing for automated RTDS files.
+
+6. Retain legacy rebuild parsers only as controlled recovery tooling, not production ingestion logic.
+
+7. Rebuild reporting marts/views against the corrected core.
+
+8. Perform final old-vs-new reporting reconciliation.
+
+9. Repeat known clinical validation cases, including:
+   - Head & Neck GIRFT;
+   - geography-dependent reporting;
+   - corrected DTT training-error case;
+   - Keloid;
+   - Heterotopic Ossification;
+   - CAT4/MSCC cases with legitimately absent DTT.
+
+10. Take a production backup/snapshot before deployment.
+
+11. Perform controlled production remediation.
+
+12. Run final acceptance controls and document sign-off.
+
+---
+
+## 50. Human-Validated Local Business Rules Established During Issue 26
+
+The following local rules have been established through PHU operational/clinical validation during the investigation and should be documented in the controlled IDR definitions:
+
+### QC/Test patients
+
+Local patient identifiers beginning with:
+
+`Z`
+
+represent PHU QC/test activity and should be explicitly excluded from clinical reporting populations.
+
+### Patient identity without NHS number
+
+Where NHS number is absent, Trust Internal System Patient ID has been demonstrated to provide a stable fallback identity in the current RTDS Attendance population.
+
+### Missing DTT
+
+Missing DTT is not automatically a data-quality failure.
+
+Examples include emergency/CAT4 pathways where DTT may not be recorded in the same way.
+
+ECAD may be the more appropriate operational date for Cancer Waiting Times analysis.
+
+### Corrected episode attributes
+
+A later clinically corrected RTDS value may supersede an earlier erroneous value.
+
+The validated Head & Neck case demonstrated that arbitrary `MIN(DTT)` would retain a known training error.
+
+### Benign treatment mappings
+
+`L91.0`
+
+→ Keloid  
+→ Benign Conditions  
+→ Other
+
+`M61.9`
+
+→ Heterotopic Ossification  
+→ Benign Conditions  
+→ Other
+
+The `M61.9` mapping was manually validated against the clinical referral record.
+
+### Source-version principle
+
+Where RTDS episode or prescription attributes change across monthly snapshots, the warehouse should use an explicit source-version rule rather than arbitrary `MIN()` or `MAX()` aggregation.
