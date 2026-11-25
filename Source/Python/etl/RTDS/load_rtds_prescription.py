@@ -94,8 +94,22 @@ def convert_dates(df):
         "time_and_date_of_exposure",
     ]
 
+    required_date_columns = (
+        date_columns + datetime_columns
+    )
+
+    missing_columns = [
+        col for col in required_date_columns
+        if col not in df.columns
+    ]
+
+    if missing_columns:
+        raise ValueError(
+            "RTDS Prescription source is missing required "
+            f"date columns: {missing_columns}"
+        )
+
     for col in date_columns:
-        if col in df.columns:
             source = df[col].astype("string").str.strip()
             populated = source.notna() & source.ne("")
 
@@ -123,7 +137,6 @@ def convert_dates(df):
             df[col] = parsed.dt.date
 
     for col in datetime_columns:
-        if col in df.columns:
             source = df[col].astype("string").str.strip()
             populated = source.notna() & source.ne("")
 

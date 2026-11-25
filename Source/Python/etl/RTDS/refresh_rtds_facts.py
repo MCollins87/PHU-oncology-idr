@@ -25,13 +25,27 @@ DB_CONFIG = {
 
 def run_sql(file):
     logging.info(f"Executing {file}")
+
     conn = psycopg2.connect(**DB_CONFIG)
-    cursor = conn.cursor()
-    with open(file, "r", encoding="utf-8") as f:
-        cursor.execute(f.read())
-    conn.commit()
-    cursor.close()
-    conn.close()
+
+    try:
+        with conn.cursor() as cursor:
+            with open(file, "r", encoding="utf-8") as f:
+                sql = f.read()
+
+            cursor.execute(sql)
+
+        conn.commit()
+
+        logging.info(f"Completed {file}")
+
+    except Exception:
+        conn.rollback()
+        logging.exception(f"Failed executing {file}")
+        raise
+
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
     run_sql(SQL_DIR / "RTDS" / "Intermediate" / "int_episode_treatment_start.sql")

@@ -82,24 +82,103 @@ def clean_columns(df):
 
 
 def convert_dates(df):
+    """
+    Parse dates from automated monthly RTDS Attendance CSV files.
+
+    Expected source formats:
+      - person_birth_date: YYYY-MM-DD
+      - radiotherapy_attendance_date_and_time:
+        YYYY-MM-DD HH:MM:SS
+      - date_and_time_of_course_start:
+        YYYY-MM-DD HH:MM:SS
+
+    Required date columns must be present.
+
+    Populated values that do not match the expected format cause
+    the ETL to fail rather than being silently converted to NULL.
+    """
 
     date_columns = [
         "person_birth_date",
-        "radiotherapy_attendance_date_and_time",
-        "date_and_time_of_course_start"
     ]
 
-    for col in date_columns:
+    datetime_columns = [
+        "radiotherapy_attendance_date_and_time",
+        "date_and_time_of_course_start",
+    ]
 
-        if col in df.columns:
-            df[col] = pd.to_datetime(
-                df[col],
-                errors="coerce",
-                dayfirst=True
+    required_date_columns = (
+        date_columns
+        + datetime_columns
+    )
+
+    missing_columns = [
+        col
+        for col in required_date_columns
+        if col not in df.columns
+    ]
+
+    if missing_columns:
+        raise ValueError(
+            "RTDS Attendance source is missing required "
+            f"date columns: {missing_columns}"
+        )
+
+    for col in date_columns:
+        source = df[col].astype("string").str.strip()
+        populated = source.notna() & source.ne("")
+
+        parsed = pd.to_datetime(
+            source,
+            format="%Y-%m-%d",
+            errors="coerce",
+        )
+
+        failed = populated & parsed.isna()
+
+        if failed.any():
+            examples = (
+                source[failed]
+                .drop_duplicates()
+                .head(10)
+                .tolist()
             )
 
-    return df
+            raise ValueError(
+                f"{col}: {failed.sum()} populated values "
+                f"failed ISO date parsing. Examples: {examples}"
+            )
 
+        df[col] = parsed.dt.date
+
+    for col in datetime_columns:
+        source = df[col].astype("string").str.strip()
+        populated = source.notna() & source.ne("")
+
+        parsed = pd.to_datetime(
+            source,
+            format="%Y-%m-%d %H:%M:%S",
+            errors="coerce",
+        )
+
+        failed = populated & parsed.isna()
+
+        if failed.any():
+            examples = (
+                source[failed]
+                .drop_duplicates()
+                .head(10)
+                .tolist()
+            )
+
+            raise ValueError(
+                f"{col}: {failed.sum()} populated values "
+                f"failed ISO datetime parsing. Examples: {examples}"
+            )
+
+        df[col] = parsed
+
+    return df
 
 def clean_value(value):
 
