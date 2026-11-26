@@ -80,6 +80,67 @@ def run_sql_inline(sql):
     finally:
         conn.close()
 # Check files exist before running the ACT pipeline
+
+def detect_available_inputs():
+    """
+    Check RTDS and SACT inputs independently.
+
+    Returns:
+        tuple[bool, bool]: (rtds_available, sact_available)
+    """
+
+    attendance_file = RTDS_DIR / "RTDS UK - CSV1 Attendance.csv"
+    prescription_file = RTDS_DIR / "RTDS UK - CSV2 Prescription.csv"
+
+    attendance_available = attendance_file.exists()
+    prescription_available = prescription_file.exists()
+
+    # RTDS requires both files before it can run safely.
+    rtds_available = (
+        attendance_available
+        and prescription_available
+    )
+
+    sact_files = [
+        file
+        for file in SACT_DIR.glob("*.csv")
+        if file.name.lower().startswith("sact_v3_")
+    ]
+
+    sact_available = bool(sact_files)
+
+    if rtds_available:
+        logging.info(
+            "RTDS input files found. RTDS pipeline will run."
+        )
+    else:
+        if not attendance_available:
+            logging.info(
+                "RTDS attendance file not found."
+            )
+
+        if not prescription_available:
+            logging.info(
+                "RTDS prescription file not found."
+            )
+
+        logging.info(
+            "RTDS input set is incomplete. Skipping RTDS pipeline."
+        )
+
+    if sact_available:
+        logging.info(
+            f"Found {len(sact_files)} SACT input file(s). "
+            "SACT pipeline will run."
+        )
+    else:
+        logging.info(
+            "No matching SACT files found. "
+            "Skipping SACT pipeline."
+        )
+
+    return rtds_available, sact_available
+
 def validate_files():
     attendance_file = RTDS_DIR / "RTDS UK - CSV1 Attendance.csv"
     prescription_file = RTDS_DIR / "RTDS UK - CSV2 Prescription.csv"
@@ -206,30 +267,67 @@ def qc_summary():
 
     logging.info("----- END QC SUMMARY -----")
 
-def archive_files():
+def archive_files(archive_rtds=False, archive_sact=False):
 
     today = datetime.now().strftime("%Y-%m")
 
-    rtds_archive = RTDS_ARCHIVE_DIR / today
-    sact_archive = SACT_ARCHIVE_DIR / today
+    if archive_rtds:
 
-    rtds_archive.mkdir(parents=True, exist_ok=True)
-    sact_archive.mkdir(parents=True, exist_ok=True)
+        rtds_archive = RTDS_ARCHIVE_DIR / today
+        rtds_archive.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
-    for file in RTDS_DIR.glob("*.csv"):
-        destination = rtds_archive / file.name
+        for file in RTDS_DIR.glob("*.csv"):
+
+            destination = rtds_archive / file.name
+
+            logging.info(
+                f"Archiving RTDS file: {file.name}"
+            )
+
+            shutil.move(
+                str(file),
+                str(destination),
+            )
+
+    else:
+
         logging.info(
-            f"Archiving RTDS file: {file.name}"
+            "RTDS archive skipped because RTDS "
+            "was not processed."
         )
-        shutil.move(str(file), str(destination))
-    for file in SACT_DIR.glob("*.csv"):
-        destination = sact_archive / file.name
+
+    if archive_sact:
+
+        sact_archive = SACT_ARCHIVE_DIR / today
+        sact_archive.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        for file in SACT_DIR.glob("*.csv"):
+
+            destination = sact_archive / file.name
+
+            logging.info(
+                f"Archiving SACT file: {file.name}"
+            )
+
+            shutil.move(
+                str(file),
+                str(destination),
+            )
+
+    else:
+
         logging.info(
-            f"Archiving SACT file: {file.name}"
+            "SACT archive skipped because SACT "
+            "was not processed."
         )
-        shutil.move(str(file), str(destination))
+
     logging.info("File archive complete")
-
 
 if __name__ == "__main__":
 
@@ -238,61 +336,90 @@ if __name__ == "__main__":
     try:
 
         # ----------------------------------------
-        # VALIDATE INPUT FILES
+        # DETECT AVAILABLE INPUTS
         # ----------------------------------------
 
-        if not validate_files():
+        rtds_available, sact_available = (
+            detect_available_inputs()
+        )
 
-            raise RuntimeError(
-                "ACT pipeline input validation failed."
-            )
-
-        # ----------------------------------------
-        # RTDS
-        # ----------------------------------------
-
-        if SKIP_RTDS_LOADS:
-
+        if not rtds_available and not sact_available:
             logging.info(
-                "Skipping RTDS raw loads - "
-                "refreshing facts only"
-            )
-
-            run_python(
-                "etl/RTDS/refresh_rtds_facts.py"
+                "No RTDS or SACT input files found. "
+                "Nothing to process."
             )
 
         else:
 
-            refresh_rtds()
+            # ----------------------------------------
+            # RTDS
+            # ----------------------------------------
 
-        # ----------------------------------------
-        # SACT
-        # ----------------------------------------
+            if rtds_available:
 
-        refresh_sact()
+                if SKIP_RTDS_LOADS:
 
-        # ----------------------------------------
-        # MARTS
-        # ----------------------------------------
+                    logging.info(
+                        "RTDS files are available, but "
+                        "SKIP_RTDS_LOADS is enabled. "
+                        "Skipping RTDS raw loads and "
+                        "refreshing facts only."
+                    )
 
-        refresh_marts()
+                    run_python(
+                        "etl/RTDS/refresh_rtds_facts.py"
+                    )
 
-        # ----------------------------------------
-        # QC
-        # ----------------------------------------
+                else:
 
-        qc_summary()
+                    refresh_rtds()
 
-        # ----------------------------------------
-        # ARCHIVE
-        # ----------------------------------------
+            else:
 
-        archive_files()
+                logging.info(
+                    "RTDS refresh skipped because the "
+                    "required RTDS input files are not available."
+                )
 
-        logging.info(
-            "ACT Pipeline completed successfully"
-        )
+            # ----------------------------------------
+            # SACT
+            # ----------------------------------------
+
+            if sact_available:
+
+                refresh_sact()
+
+            else:
+
+                logging.info(
+                    "SACT refresh skipped because no "
+                    "matching SACT input files are available."
+                )
+
+            # ----------------------------------------
+            # MARTS
+            # ----------------------------------------
+
+            refresh_marts()
+
+            # ----------------------------------------
+            # QC
+            # ----------------------------------------
+
+            qc_summary()
+
+            # ----------------------------------------
+            # ARCHIVE
+            # ----------------------------------------
+
+            archive_files(
+                archive_rtds=rtds_available,
+                archive_sact=sact_available,
+            )
+
+            logging.info(
+                "ACT Pipeline completed successfully"
+            )
 
     except Exception:
 
